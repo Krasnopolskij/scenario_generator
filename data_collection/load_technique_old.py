@@ -7,6 +7,26 @@ from tqdm import tqdm
 
 load_dotenv()
 
+# Порядок тактик MITRE ATT&CK (enterprise) для хронологии сценариев
+# Источник: общепринятый порядок стадий цепочки атаки
+ORDERED_TACTICS = [
+    "reconnaissance",
+    "resource-development",
+    "initial-access",
+    "execution",
+    "persistence",
+    "privilege-escalation",
+    "defense-evasion",
+    "credential-access",
+    "discovery",
+    "lateral-movement",
+    "collection",
+    "command-and-control",
+    "exfiltration",
+    "impact",
+]
+TACTIC_ORDER = {name: idx for idx, name in enumerate(ORDERED_TACTICS, start=1)}
+
 def get_attack_techniques():
     """Загружает данные MITRE ATT&CK напрямую из GitHub в память"""
     all_objects = []
@@ -62,18 +82,34 @@ def process_techniques(objects, graph):
             if phase.get('kill_chain_name') == 'mitre-attack':
                 tactics.append(phase['phase_name'])
 
+        # Вычисляем основную тактику и её порядковый номер (минимальный по хронологии)
+        tactic_order_values = []
+        for tname in tactics:
+            tnorm = (tname or "").strip().lower()
+            if tnorm in TACTIC_ORDER:
+                tactic_order_values.append((TACTIC_ORDER[tnorm], tnorm))
+        tactic_order = None
+        primary_tactic = None
+        if tactic_order_values:
+            tactic_order_values.sort(key=lambda x: x[0])
+            tactic_order, primary_tactic = tactic_order_values[0]
+
         try:
             graph.run(
                 """
                 MERGE (t:Technique {identifier: $id})
                 SET t.name = $name, 
                     t.description = $desc, 
-                    t.tactics = $tactics
+                    t.tactics = $tactics,
+                    t.primary_tactic = $primary_tactic,
+                    t.tactic_order = $tactic_order
                 """,
                 id=mitre_id,
                 name=obj.get('name', ''),
                 desc=obj.get('description', ''),
-                tactics=tactics
+                tactics=tactics,
+                primary_tactic=primary_tactic,
+                tactic_order=tactic_order
             )
         except Exception as e:
             print(f"Ошибка при обработке {mitre_id}: {str(e)}")
