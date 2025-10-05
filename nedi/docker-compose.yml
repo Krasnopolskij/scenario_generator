@@ -1,0 +1,30 @@
+services:
+  mariadb:
+    image: mariadb:11
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: change_root
+      MYSQL_DATABASE: nedi
+      MYSQL_USER: nedi
+      MYSQL_PASSWORD: change_nedi
+    volumes:
+      - nedi_db:/var/lib/mysql
+
+  nedi:
+    image: klinnex/nedi:latest
+    restart: unless-stopped
+    depends_on:
+      - mariadb
+    environment:
+      DB_HOST: mariadb
+      DB_NAME: nedi
+      DB_USER: nedi
+      DB_PASS: change_nedi
+    ports:
+      - "8080:80"
+    volumes:
+      - nedi_data:/var/local/nedi
+
+volumes:
+  nedi_data:
+  nedi_db:
