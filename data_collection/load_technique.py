@@ -8,7 +8,6 @@ from tqdm import tqdm
 load_dotenv()
 
 # Порядок тактик MITRE ATT&CK (enterprise) для хронологии сценариев
-# Источник: общепринятый порядок стадий цепочки атаки
 ORDERED_TACTICS = [
     "reconnaissance",
     "resource-development",
@@ -53,7 +52,6 @@ def process_techniques(objects, graph):
     CAPEC_PATTERN = re.compile(r'^CAPEC-?\d+$', re.IGNORECASE)
     CWE_PATTERN = re.compile(r'^CWE-?\d+$', re.IGNORECASE)
 
-    # Корректный подсчет прогресса: только по техникам с MITRE ID
     total = 0
     for _obj in objects:
         if _obj.get('type') == 'attack-pattern':
@@ -150,11 +148,6 @@ def process_techniques(objects, graph):
                         )
                 except Exception as e:
                     print(f"Ошибка связи {link_type} {ext_id}: {str(e)}")
-
-        # Митигейшены не парсим: пропускаем HTML-скрейпинг и связи Technique→Mitigation
-        # Это ускоряет загрузку и убирает потенциальные ошибки с HTML‑структурой.
-
-    # Закрываем прогресс-бар после обработки всех техник
     pbar.close()
 
 

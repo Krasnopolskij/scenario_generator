@@ -5,17 +5,13 @@ import json
 import time
 import datetime as dt
 from typing import List, Dict, Optional, Tuple
-
 import requests
 from py2neo import Graph
 from tqdm import tqdm
 
-
-# База фидов NVD: годовые JSON 2.0 и модифицированный фид
 NVD_BASE = os.getenv("NVD_FEED_BASE", "https://nvd.nist.gov/feeds/json/cve/2.0")
 
-
-# ---------------- EPSS ----------------
+# EPSS
 def _fetch_epss_batch(base_url: str, cve_batch: List[str]) -> Dict[str, Dict[str, Optional[float]]]:
     params = {"cve": ",".join(cve_batch)}
     try:
@@ -51,7 +47,7 @@ def get_epss_scores(cve_list: List[str]) -> Dict[str, Dict[str, Optional[float]]
     return results
 
 
-# ---------------- Разложение CVSS на C/I/A ----------------
+# Разложение CVSS на C/I/A
 from itertools import permutations
 
 
@@ -218,7 +214,7 @@ def calculate_separate_scores(version: str, vector_string: str, base_score: floa
     return {"Contribution_C": 0.0, "Contribution_I": 0.0, "Contribution_A": 0.0}
 
 
-# ---------------- Вспомогательные функции разбора NVD ----------------
+# Вспомогательные функции разбора NVD
 def best_cvss_vector_and_base(metrics: dict) -> Tuple[str, float, str]:
     if not metrics:
         return "", 0.0, ""
@@ -293,9 +289,9 @@ def extract_from_vuln(vuln: dict):
     }
 
 
-# ---------------- Импорт в Neo4j ----------------
+# Импорт в Neo4j
 def ensure_constraints(graph: Graph):
-    # Пытаемся создать констрейнты новым синтаксисом; если не вышло — старым; ошибки игнорируем
+    # Создание ограничений (новый и старый синтаксис для совместимости)
     statements_new = [
         "CREATE CONSTRAINT cve_identifier IF NOT EXISTS FOR (v:CVE) REQUIRE v.identifier IS UNIQUE",
         "CREATE CONSTRAINT cwe_identifier IF NOT EXISTS FOR (c:CWE) REQUIRE c.identifier IS UNIQUE",
@@ -318,12 +314,11 @@ def ensure_constraints(graph: Graph):
             pass
 
 
-# ---------------- Разбор CPE 2.3 ----------------
+# Парсинг CPE 2.3
 def parse_cpe23(cpe_uri: str) -> Dict[str, str]:
     """Грубый разбор CPE 2.3 URI в поля. Сохраняем исходную строку в cpe23Uri.
 
     Формат: cpe:2.3:part:vendor:product:version:update:edition:language:sw_edition:target_sw:target_hw:other
-    Примечание: экранированные двоеточия (\:) не обрабатываем полноценно; для большинства URI простого split хватает.
     """
     result = {
         "cpe23Uri": cpe_uri,
@@ -406,7 +401,7 @@ def upsert_batch(graph: Graph, batch: List[dict], epss_map: Dict[str, Dict[str, 
     """
     graph.run(query_nodes, cves=batch)
 
-    # Связи CWE (сохраняем прежнее направление: (CWE)-[:CWE_TO_CVE]->(CVE))
+    # Связи CWE (CWE)-[:CWE_TO_CVE]->(CVE)
     query_cwe = """
     UNWIND $cves AS c
     MATCH (v:CVE {identifier: c.id})
@@ -471,7 +466,6 @@ def import_year(graph: Graph, year: int, batch_size: int = 500):
     for v in vulns:
         item = extract_from_vuln(v)
         if not item["id"]:
-            # Пропускаем записи без валидного CVE ID, но учитываем просмотр
             pbar.update(1)
             continue
         batch.append(item)
@@ -490,7 +484,6 @@ def import_year(graph: Graph, year: int, batch_size: int = 500):
         upsert_batch(graph, batch, epss_map)
         processed += len(batch)
         pbar.update(len(batch))
-    # Добиваем прогресс (на случай пропусков)
     if pbar.n < total:
         pbar.update(total - pbar.n)
     pbar.close()
@@ -542,7 +535,7 @@ def import_modified(graph: Graph, batch_size: int = 500):
 
 
 def load():
-    # Подключение к Neo4j через переменные окружения (для совместимости с проектом)
+    # Подключение к Neo4j
     neo4j_uri = os.getenv("NEO4J_URI")
     neo4j_user = os.getenv("NEO4J_USER")
     neo4j_password = os.getenv("NEO4J_PASSWORD")
