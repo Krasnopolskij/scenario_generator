@@ -3,6 +3,7 @@
 # =========================
 
 import pandas as pd
+from pathlib import Path
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -14,10 +15,11 @@ from tqdm import tqdm
 from sklearn.metrics.pairwise import cosine_similarity
 
 # =========================
-# 1. Загружаем CSV
+# 1. Загружаем CSV (относительные пути от директории файла)
 # =========================
-nodes = pd.read_csv("/home/s1r1us/GenScenario/gnn_mvp/nodes.csv")
-edges = pd.read_csv("/home/s1r1us/GenScenario/gnn_mvp/edges.csv")
+BASE = Path(__file__).parent.resolve()
+nodes = pd.read_csv(BASE / "nodes.csv")
+edges = pd.read_csv(BASE / "edges.csv")
 
 # Чистим кавычки и пробелы
 for col in ["id", "label", "name", "description"]:
