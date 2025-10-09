@@ -1,9 +1,7 @@
 from typing import List, Dict, Optional
 from py2neo import Graph
 
-
 ALLOWED_PARTS = {"a", "o", "h"}
-
 
 def vendors(graph: Graph, part: str, q: str = "", limit: int = 100, offset: int = 0) -> List[str]:
     if part not in ALLOWED_PARTS:

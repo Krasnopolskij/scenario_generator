@@ -9,7 +9,6 @@
   --error: #e74c3c;
 }
 
-/* Светлая тема (удалена переключалка, тема по умолчанию тёмная) */
 
 * { box-sizing: border-box; }
 html, body { height: 100%; }
@@ -99,12 +98,11 @@ button.selected { background: var(--ok); }
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   font-size: 12.5px;
   line-height: 1.5;
-  white-space: pre-wrap;       /* перенос длинных строк */
-  word-break: break-word;      /* перенос по словам */
-  overflow-wrap: anywhere;     /* перенос даже без пробелов */
+  white-space: pre-wrap;       
+  word-break: break-word;      
+  overflow-wrap: anywhere;     
 }
 
-/* Консоль в светлой теме — не используется */
 .console .ok { color: var(--ok); }
 .console .warn { color: var(--warn); }
 .console .err { color: var(--error); }
@@ -114,7 +112,6 @@ button.selected { background: var(--ok); }
   .console { height: 45vh; }
   .controls, .output { min-height: auto; }
   .results { max-height: 40vh; }
-  /* На странице CPE фиксируем отсутствие max-height даже на мобильных */
   .page-cpe .results, .page-cpe .picked { max-height: none; }
 }
 
@@ -148,14 +145,11 @@ button.selected { background: var(--ok); }
 .picked li { padding: 6px 8px; border-bottom: 1px solid #1d2342; }
 .picked li:last-child { border-bottom: 0; }
 
-/* Переключатель темы — удалён */
 .input-wrap input[type="number"],
 .input-wrap input[type="text"],
 .input-wrap select {
   width: 100%;
   display: block;
 }
-/* Разметка правой панели на странице CPE: заголовок, список результатов, заголовок, выбранные
-   ВАЖНО: ограничиваем правилом .page-cpe, чтобы на странице загрузки данных
-   .output оставался обычным блочным контейнером и не растягивал страницу. */
+/* Разметка правой панели на странице CPE: заголовок */
 .page-cpe .output { display: grid; grid-template-rows: auto 1fr auto 1fr; gap: 10px; height: 80vh; }

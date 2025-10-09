@@ -1,22 +1,21 @@
-import sys
-import json
-import subprocess
 import os
 import select
-from pathlib import Path
-from typing import List, Optional
-
+import subprocess
+import sys
 import threading
-from typing import Dict
+import time
+from pathlib import Path
+from typing import Dict, List, Optional
+
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from py2neo import Graph
-from cpe import search as cpe_search
 from dotenv import load_dotenv
+from cpe import search as cpe_search
 
 ROOT = Path(__file__).parent.resolve()
-load_dotenv()  # чтобы .env подхватывался для CPE API и прочего
+load_dotenv() 
 
 app = FastAPI(title="Scenario Generator UI")
 
@@ -32,7 +31,6 @@ def index() -> FileResponse:
     return FileResponse(str(index_file))
 
 
-# CPE selector page
 @app.get("/cpe")
 def cpe_page() -> FileResponse:
     page = ui_dir / "cpe.html"
@@ -46,9 +44,7 @@ RUNS: Dict[str, subprocess.Popen] = {}
 RUNS_LOCK = threading.Lock()
 
 # Neo4j connection (cached)
-from typing import Optional
 _GRAPH: Optional[Graph] = None
-
 
 def get_graph() -> Graph:
     global _GRAPH
@@ -271,7 +267,7 @@ def health():
     return JSONResponse({"status": "ok"})
 
 
-# ---------- CPE APIs ----------
+# CPE APIs
 @app.get("/api/cpe/vendors")
 def api_cpe_vendors(part: str, q: str = "", limit: int = 100, offset: int = 0):
     g = get_graph()
