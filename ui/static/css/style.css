@@ -18,11 +18,11 @@ body {
   color: var(--text); background: linear-gradient(180deg, #0b0e1a, var(--bg));
 }
 
-header, footer { padding: 12px 20px; background: #0b0e1a; border-bottom: 1px solid #111528; }
+header, footer { padding: 12px 20px; background: #0b0e1a; border-bottom: 1px solid #111528; display:flex; align-items:center; justify-content:space-between; gap:12px; }
 header h1 { margin: 0; font-size: 18px; font-weight: 600; }
 footer { border-top: 1px solid #111528; border-bottom: none; color: var(--muted); font-size: 12px; }
 
-main { padding: 20px; display: grid; gap: 20px; grid-template-columns: 360px 1fr; }
+main { padding: 20px; display: grid; gap: 20px; grid-template-columns: 420px 1fr; }
 
 .controls, .output { background: var(--panel); border: 1px solid #111528; border-radius: 10px; padding: 16px; }
 .controls h2, .output h2 { margin: 0 0 12px 0; font-size: 16px; }
@@ -33,15 +33,42 @@ legend { color: var(--muted); font-size: 12px; padding: 0 6px; }
 label { display: inline-flex; align-items: center; gap: 8px; margin: 6px 10px 6px 0; font-size: 14px; }
 
 .field { margin: 12px 0; display: grid; gap: 6px; }
+/* Обёртка, чтобы индикатор показывать справа от инпута/селекта */
+.input-wrap { position: relative; width: 100%; display: flex; align-items: center; gap: 8px; }
 input[type="number"], input[type="text"] {
   background: #0f1326; border: 1px solid #1d2342; color: var(--text); border-radius: 8px; padding: 8px 10px; outline: none;
 }
 input[type="number"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79, 140, 255, 0.2); }
+select {
+  background: #0f1326; border: 1px solid #1d2342; color: var(--text); border-radius: 8px; padding: 8px 10px; outline: none;
+}
+select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79, 140, 255, 0.2); }
+
+/* Индикатор статуса выбора поля */
+.status { display:inline-block; width:10px; height:10px; border-radius:50%; margin-left:6px; background:#2a3052; border:1px solid #1d2342; vertical-align:middle; }
+.input-wrap .status { position: static; margin-left: 4px; }
+.status.ok { background: var(--ok); border-color: var(--ok); }
 
 .actions { display: flex; gap: 10px; }
 button { cursor: pointer; border: 0; border-radius: 8px; padding: 8px 14px; font-weight: 600; color: white; background: var(--accent); }
 button[disabled] { opacity: 0.65; cursor: not-allowed; }
 #stop-btn { background: var(--error); }
+.btn-link { color: var(--text); text-decoration: none; padding: 8px 10px; border-radius: 8px; border: 1px solid #1d2342; }
+.btn-link:hover { border-color: var(--accent); }
+
+/* Навигация в шапке */
+.nav { display:flex; gap:8px; }
+.nav-link { display:inline-block; color: var(--text); text-decoration:none; padding:6px 10px; border:1px solid #1d2342; border-radius:8px; }
+.nav-link:hover { border-color: var(--accent); }
+.nav-link.active { background: #141939; border-color:#1d2b62; }
+
+/* Настройки только для страницы "Сбор данных" */
+.page-data .controls, .page-data .output { min-height: unset !important; height: auto !important; }
+.page-data .console { height: 60vh; }
+
+/* Высота блоков и сетка только на странице CPE */
+.page-cpe .controls, .page-cpe .output { min-height: 80vh; }
+.page-cpe .output { display: grid; grid-template-rows: auto 1fr auto 1fr; gap: 10px; }
 
 .console {
   height: 60vh;
@@ -68,6 +95,48 @@ button[disabled] { opacity: 0.65; cursor: not-allowed; }
 @media (max-width: 920px) {
   main { grid-template-columns: 1fr; }
   .console { height: 45vh; }
+  .controls, .output { min-height: auto; }
+  .results { max-height: 40vh; }
 }
 
+/* Подсказки */
+.suggest { position: relative; height: 0; }
+.suggest ul {
+  position: absolute; left: 0; right: 0; top: 4px; z-index: 20;
+  list-style: none; margin: 0; padding: 0; background: #0f1326;
+  border: 1px solid #1d2342; border-radius: 8px; max-height: 260px; overflow: auto;
+  box-shadow: 0 8px 18px rgba(0,0,0,0.35);
+  scrollbar-color: #2a3052 #0f1326; /* Firefox */
+}
+.suggest ul li.more { text-align: center; color: var(--accent); font-weight: 600; cursor: pointer; }
+.suggest ul li.more:hover { background: #141939; }
+.suggest ul::-webkit-scrollbar { width: 10px; }
+.suggest ul::-webkit-scrollbar-track { background: #0f1326; border-radius: 8px; }
+.suggest ul::-webkit-scrollbar-thumb { background: #2a3052; border-radius: 8px; border: 1px solid #1d2342; }
+.suggest li { padding: 6px 10px; cursor: pointer; }
+.suggest li:hover { background: #141939; }
+
+.results { border: 1px solid #111528; border-radius: 10px; padding: 8px; background: var(--panel); min-height: 80px; max-height: 48vh; overflow: auto; scrollbar-color: #2a3052 #0f1326; }
+.results::-webkit-scrollbar { width: 10px; }
+.results::-webkit-scrollbar-track { background: #0f1326; border-radius: 8px; }
+.results::-webkit-scrollbar-thumb { background: #2a3052; border-radius: 8px; border: 1px solid #1d2342; }
+.results .row { display: grid; grid-template-columns: 1fr auto; align-items: center; border-bottom: 1px solid #1d2342; padding: 6px 8px; }
+.results .row:last-child { border-bottom: 0; }
+.picked { list-style: none; margin: 8px 0 0 0; padding: 0; border: 1px solid #111528; border-radius: 10px; background: var(--panel); max-height: 26vh; overflow: auto; scrollbar-color: #2a3052 #0f1326; }
+.picked::-webkit-scrollbar { width: 10px; }
+.picked::-webkit-scrollbar-track { background: #0f1326; border-radius: 8px; }
+.picked::-webkit-scrollbar-thumb { background: #2a3052; border-radius: 8px; border: 1px solid #1d2342; }
+.picked li { padding: 6px 8px; border-bottom: 1px solid #1d2342; }
+.picked li:last-child { border-bottom: 0; }
+
 /* Переключатель темы — удалён */
+.input-wrap input[type="number"],
+.input-wrap input[type="text"],
+.input-wrap select {
+  width: 100%;
+  display: block;
+}
+/* Разметка правой панели на странице CPE: заголовок, список результатов, заголовок, выбранные
+   ВАЖНО: ограничиваем правилом .page-cpe, чтобы на странице загрузки данных
+   .output оставался обычным блочным контейнером и не растягивал страницу. */
+.page-cpe .output { display: grid; grid-template-rows: auto 1fr auto 1fr; gap: 10px; }

@@ -11,8 +11,12 @@ from typing import Dict
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from py2neo import Graph
+from cpe import search as cpe_search
+from dotenv import load_dotenv
 
 ROOT = Path(__file__).parent.resolve()
+load_dotenv()  # чтобы .env подхватывался для CPE API и прочего
 
 app = FastAPI(title="Scenario Generator UI")
 
@@ -28,11 +32,36 @@ def index() -> FileResponse:
     return FileResponse(str(index_file))
 
 
+# CPE selector page
+@app.get("/cpe")
+def cpe_page() -> FileResponse:
+    page = ui_dir / "cpe.html"
+    return FileResponse(str(page))
+
+
 ALLOWED_LOADERS = {"techniques", "capec", "cwe", "cve"}
 
 # Регистрация запущенных процессов: run_id -> Popen
 RUNS: Dict[str, subprocess.Popen] = {}
 RUNS_LOCK = threading.Lock()
+
+# Neo4j connection (cached)
+from typing import Optional
+_GRAPH: Optional[Graph] = None
+
+
+def get_graph() -> Graph:
+    global _GRAPH
+    if _GRAPH is not None:
+        return _GRAPH
+    neo4j_uri = os.getenv("NEO4J_URI")
+    neo4j_user = os.getenv("NEO4J_USER")
+    neo4j_password = os.getenv("NEO4J_PASSWORD")
+    neo4j_db = os.getenv("NEO4J_DATABASE", "neo4j")
+    if not all([neo4j_uri, neo4j_user, neo4j_password]):
+        raise RuntimeError("Отсутствуют NEO4J_URI/NEO4J_USER/NEO4J_PASSWORD. Укажите их в .env")
+    _GRAPH = Graph(neo4j_uri, auth=(neo4j_user, neo4j_password), name=neo4j_db)
+    return _GRAPH
 
 
 def build_command(only: Optional[List[str]], skip: Optional[List[str]], cve_from_year: Optional[int]) -> List[str]:
@@ -240,3 +269,53 @@ async def stop_run(request: Request):
 @app.get("/health")
 def health():
     return JSONResponse({"status": "ok"})
+
+
+# ---------- CPE APIs ----------
+@app.get("/api/cpe/vendors")
+def api_cpe_vendors(part: str, q: str = "", limit: int = 100, offset: int = 0):
+    g = get_graph()
+    items = cpe_search.vendors(
+        g,
+        part=part,
+        q=q,
+        limit=min(max(limit, 1), 200),
+        offset=max(0, int(offset)),
+    )
+    return {"items": items}
+
+
+@app.get("/api/cpe/products")
+def api_cpe_products(part: str, vendor: str, q: str = "", limit: int = 100, offset: int = 0):
+    g = get_graph()
+    items = cpe_search.products(
+        g,
+        part=part,
+        vendor=vendor,
+        q=q,
+        limit=min(max(limit, 1), 200),
+        offset=max(0, int(offset)),
+    )
+    return {"items": items}
+
+
+@app.get("/api/cpe/versions")
+def api_cpe_versions(part: str, vendor: str, product: str, q: str = "", limit: int = 100, offset: int = 0):
+    g = get_graph()
+    items = cpe_search.versions(
+        g,
+        part=part,
+        vendor=vendor,
+        product=product,
+        q=q,
+        limit=min(max(limit, 1), 200),
+        offset=max(0, int(offset)),
+    )
+    return {"items": items}
+
+
+@app.get("/api/cpe/search")
+def api_cpe_search(part: str, vendor: str = "", product: str = "", version: str = "", limit: int = 50):
+    g = get_graph()
+    items = cpe_search.search(g, part=part, vendor=vendor, product=product, version=version, limit=min(max(limit, 1), 200))
+    return {"items": items}
