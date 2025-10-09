@@ -68,7 +68,22 @@ button[disabled] { opacity: 0.65; cursor: not-allowed; }
 
 /* Высота блоков и сетка только на странице CPE */
 .page-cpe .controls, .page-cpe .output { min-height: 80vh; }
-.page-cpe .output { display: grid; grid-template-rows: auto 1fr auto 1fr; gap: 10px; }
+/* Не даём контенту растягивать грид-треки: minmax(0,1fr) и min-height:0 у детей.
+   Фиксируем высоту общей колонки, чтобы 1fr/1fr делились поровну и не менялись от содержимого. */
+.page-cpe .output { display: grid; grid-template-rows: auto minmax(0,1fr) auto minmax(0,1fr); gap: 10px; height: 80vh; }
+/* Списки заполняют свои грид-строки и прокручиваются внутри */
+.page-cpe .results, .page-cpe .picked {
+  min-height: 0;            /* разрешаем элементу быть меньше собственного контента */
+  max-height: unset;        /* убираем глобальный max-height */
+  overflow: auto;           /* включаем внутреннюю прокрутку */
+  scrollbar-color: #2a3052 #0f1326;
+}
+.page-cpe .results::-webkit-scrollbar,
+.page-cpe .picked::-webkit-scrollbar { width: 10px; }
+.page-cpe .results::-webkit-scrollbar-track,
+.page-cpe .picked::-webkit-scrollbar-track { background: #0f1326; border-radius: 8px; }
+.page-cpe .results::-webkit-scrollbar-thumb,
+.page-cpe .picked::-webkit-scrollbar-thumb { background: #2a3052; border-radius: 8px; border: 1px solid #1d2342; }
 
 .console {
   height: 60vh;
@@ -97,6 +112,8 @@ button[disabled] { opacity: 0.65; cursor: not-allowed; }
   .console { height: 45vh; }
   .controls, .output { min-height: auto; }
   .results { max-height: 40vh; }
+  /* На странице CPE фиксируем отсутствие max-height даже на мобильных */
+  .page-cpe .results, .page-cpe .picked { max-height: none; }
 }
 
 /* Подсказки */
@@ -139,4 +156,4 @@ button[disabled] { opacity: 0.65; cursor: not-allowed; }
 /* Разметка правой панели на странице CPE: заголовок, список результатов, заголовок, выбранные
    ВАЖНО: ограничиваем правилом .page-cpe, чтобы на странице загрузки данных
    .output оставался обычным блочным контейнером и не растягивал страницу. */
-.page-cpe .output { display: grid; grid-template-rows: auto 1fr auto 1fr; gap: 10px; }
+.page-cpe .output { display: grid; grid-template-rows: auto 1fr auto 1fr; gap: 10px; height: 80vh; }
