@@ -190,7 +190,17 @@
     }
   }, true);
 
+  // Храним ссылки на кнопки в результатах, чтобы менять их цвет при выборе/удалении
+  const btnByCpe = new Map();
+
+  function setBtnSelected(btn, on) {
+    if (!btn) return;
+    btn.classList.toggle('selected', !!on);
+    btn.textContent = on ? 'Выбрано' : 'Выбрать';
+  }
+
   function renderResults(items) {
+    btnByCpe.clear();
     if (!items || items.length === 0) { results.innerHTML = '<div class="muted">Ничего не найдено</div>'; return; }
     // Убираем дубли по cpe23Uri на всякий случай
     const seen = new Set();
@@ -204,28 +214,45 @@
       left.textContent = row.cpe23Uri;
       const right = document.createElement('div');
       const btn = document.createElement('button');
-      btn.textContent = 'Добавить';
-      btn.addEventListener('click', () => addPicked(row.cpe23Uri));
+      btn.textContent = 'Выбрать';
+      btn.dataset.cpe = row.cpe23Uri;
+      // Если уже выбрано — сразу подсветить
+      if (pickedSet.has(row.cpe23Uri)) setBtnSelected(btn, true);
       right.appendChild(btn);
       div.appendChild(left); div.appendChild(right);
       frag.appendChild(div);
+      btnByCpe.set(row.cpe23Uri, btn);
     });
     results.innerHTML = '';
     results.appendChild(frag);
   }
 
   const pickedSet = new Set();
+  const pickedMap = new Map(); // cpe -> <li>
+
+  function removePicked(cpe) {
+    if (!pickedSet.has(cpe)) return;
+    pickedSet.delete(cpe);
+    const li = pickedMap.get(cpe);
+    if (li && li.remove) li.remove();
+    pickedMap.delete(cpe);
+    const btn = btnByCpe.get(cpe);
+    if (btn) setBtnSelected(btn, false);
+  }
+
   function addPicked(cpe) {
     if (pickedSet.has(cpe)) return; // уже добавлено
     pickedSet.add(cpe);
     const li = document.createElement('li');
+    li.dataset.cpe = cpe;
     li.textContent = cpe;
     const rm = document.createElement('button');
     rm.textContent = '×';
     rm.style.marginLeft = '8px';
-    rm.addEventListener('click', () => { pickedSet.delete(cpe); li.remove(); });
+    rm.addEventListener('click', () => removePicked(cpe));
     li.appendChild(rm);
     picked.appendChild(li);
+    pickedMap.set(cpe, li);
   }
 
   form.addEventListener('submit', async (e) => {
@@ -246,6 +273,20 @@
     }
   });
 
+  // Делегирование клика по кнопкам в списке результатов
+  results.addEventListener('click', (e) => {
+    const btn = e.target && e.target.closest('button');
+    if (!btn || !btn.dataset || !btn.dataset.cpe) return;
+    const cpe = btn.dataset.cpe;
+    if (pickedSet.has(cpe)) {
+      // Повторный клик — удалить из выбранных
+      removePicked(cpe);
+    } else {
+      addPicked(cpe);
+      setBtnSelected(btn, true);
+    }
+  });
+
   // Сброс формы
   if (resetBtn) {
     resetBtn.addEventListener('click', () => {
@@ -255,6 +296,9 @@
       setStatus(vendorStatus, false); setStatus(productStatus, false); setStatus(versionStatus, false);
       vendorSug.innerHTML=''; productSug.innerHTML=''; versionSug.innerHTML='';
       results.innerHTML=''; picked.innerHTML='';
+      pickedSet.clear();
+      pickedMap.clear();
+      if (btnByCpe) btnByCpe.clear();
       partEl.focus();
     });
   }

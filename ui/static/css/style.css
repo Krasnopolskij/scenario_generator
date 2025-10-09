@@ -55,6 +55,8 @@ button[disabled] { opacity: 0.65; cursor: not-allowed; }
 #stop-btn { background: var(--error); }
 .btn-link { color: var(--text); text-decoration: none; padding: 8px 10px; border-radius: 8px; border: 1px solid #1d2342; }
 .btn-link:hover { border-color: var(--accent); }
+/* Состояние выбранной записи в списке CPE */
+button.selected { background: var(--ok); }
 
 /* Навигация в шапке */
 .nav { display:flex; gap:8px; }
