@@ -85,48 +85,6 @@ def load():
                                     }
                                 )
 
-                            # else:
-                            #     source_id = f"CAPEC-{current_capec_id}"
-                            #     target_id = f"CAPEC-{target_capec_id}"
-                            #
-                            #     relationship_type = f"CAPEC_{re.sub(r'(?<!^)(?=[A-Z])', '_', nature).upper()}_CAPEC"
-                            #
-                            #     graph.run(
-                            #         f"""
-                            #         MATCH (source:CAPEC {{id: $source_id}}), (target:CAPEC {{id: $target_id}})
-                            #         MERGE (source)-[r:{relationship_type}]->(target)
-                            #         """,
-                            #         {
-                            #             "source_id": source_id,
-                            #             "target_id": target_id,
-                            #         }
-                            #     )
-
-                # # Обработка связей с CWE
-                # related_cwe = row.get('Related Weaknesses', '')
-                # for cwe_id in [c.strip() for c in related_cwe.split("::") if c]:
-                #     # Создаем CWE узел с возможностью обновления имени (если есть данные)
-                #     graph.run(
-                #         """
-                #         MERGE (w:CWE {id: $cwe_id})
-                #         """,
-                #         {
-                #             "cwe_id": f"CWE-{cwe_id}",
-                #         }
-                #     )
-                #
-                #     graph.run(
-                #         """
-                #         MATCH (c:CAPEC {id: $capec_id}), (w:CWE {id: $cwe_id})
-                #         MERGE (c)-[r:CAPEC_TO_CWE]->(w)
-                #         """,
-                #         {
-                #             "capec_id": f"CAPEC-{current_capec_id}",
-                #             "cwe_id": "CWE-" + cwe_id
-                #         }
-                #     )
-
-
                 # Обработка связей с MITRE ATT&CK
                 taxonomy_mappings = row.get('Taxonomy Mappings', '')
                 for mapping in taxonomy_mappings.split("::"):
@@ -183,28 +141,8 @@ def mapping(graph):
                     {"id": f"CAPEC-{current_capec_id}"}
                 )
 
-                # # 1. Связи с CWE (из Related Weaknesses)
-                # related_cwe = row.get('Related Weaknesses', '')
-                # for cwe_id in [c.strip() for c in related_cwe.split("::") if c]:
-                #     # Создаем CWE узел
-                #     graph.run(
-                #         "MERGE (w:CWE {id: $cwe_id})",
-                #         {"cwe_id": f"CWE-{cwe_id}"}
-                #     )
-                #     # Создаем связь CAPEC → CWE
-                #     graph.run(
-                #         """
-                #         MATCH (c:CAPEC {id: $capec_id}),
-                #               (w:CWE {id: $cwe_id})
-                #         MERGE (c)-[:CAPEC_TO_CWE]->(w)
-                #         """,
-                #         {
-                #             "capec_id": f"CAPEC-{current_capec_id}",
-                #             "cwe_id": f"CWE-{cwe_id}"
-                #         }
-                #     )
 
-                # 2. Связи между CAPEC (через Related Attack Patterns)
+                # Связи между CAPEC
                 related_attack_patterns = row.get('Related Attack Patterns', '')
                 for pattern in related_attack_patterns.split("::"):
                     if pattern.strip():
@@ -232,21 +170,7 @@ def mapping(graph):
                                     {"parent_id": parent_id, "child_id": child_id}
                                 )
 
-                            # else:
-                            #     source_id = f"CAPEC-{current_capec_id}"
-                            #     target_id = f"CAPEC-{target_capec_id}"
-                            #     relationship_type = f"CAPEC_{re.sub(r'(?<!^)(?=[A-Z])', '_', nature).upper()}_CAPEC"
-                            #
-                            #     graph.run(
-                            #         f"""
-                            #         MATCH (s:CAPEC {{id: $source_id}}),
-                            #               (t:CAPEC {{id: $target_id}})
-                            #         MERGE (s)-[r:{relationship_type}]->(t)
-                            #         """,
-                            #         {"source_id": source_id, "target_id": target_id}
-                            #     )
-
-                # 3. Связи с MITRE Techniques (только ATTACK)
+                # Связи с MITRE Techniques
                 taxonomy_mappings = row.get('Taxonomy Mappings', '')
                 for mapping_str in taxonomy_mappings.split("::"):
                     if "TAXONOMY NAME:ATTACK" in mapping_str:

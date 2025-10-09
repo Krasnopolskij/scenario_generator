@@ -1,0 +1,73 @@
+:root {
+  --bg: #0f1220;
+  --panel: #171a2b;
+  --text: #e5e7ef;
+  --muted: #9aa0b4;
+  --accent: #4f8cff;
+  --ok: #2ecc71;
+  --warn: #f1c40f;
+  --error: #e74c3c;
+}
+
+/* Светлая тема (удалена переключалка, тема по умолчанию тёмная) */
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, sans-serif;
+  color: var(--text); background: linear-gradient(180deg, #0b0e1a, var(--bg));
+}
+
+header, footer { padding: 12px 20px; background: #0b0e1a; border-bottom: 1px solid #111528; }
+header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+footer { border-top: 1px solid #111528; border-bottom: none; color: var(--muted); font-size: 12px; }
+
+main { padding: 20px; display: grid; gap: 20px; grid-template-columns: 360px 1fr; }
+
+.controls, .output { background: var(--panel); border: 1px solid #111528; border-radius: 10px; padding: 16px; }
+.controls h2, .output h2 { margin: 0 0 12px 0; font-size: 16px; }
+.controls p { color: var(--muted); font-size: 13px; }
+
+fieldset { border: 1px solid #202542; border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; }
+legend { color: var(--muted); font-size: 12px; padding: 0 6px; }
+label { display: inline-flex; align-items: center; gap: 8px; margin: 6px 10px 6px 0; font-size: 14px; }
+
+.field { margin: 12px 0; display: grid; gap: 6px; }
+input[type="number"], input[type="text"] {
+  background: #0f1326; border: 1px solid #1d2342; color: var(--text); border-radius: 8px; padding: 8px 10px; outline: none;
+}
+input[type="number"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79, 140, 255, 0.2); }
+
+.actions { display: flex; gap: 10px; }
+button { cursor: pointer; border: 0; border-radius: 8px; padding: 8px 14px; font-weight: 600; color: white; background: var(--accent); }
+button[disabled] { opacity: 0.65; cursor: not-allowed; }
+#stop-btn { background: var(--error); }
+
+.console {
+  height: 60vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: #0b0e1a;
+  border: 1px solid #10152b;
+  border-radius: 8px;
+  padding: 12px;
+  color: #d6deff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;       /* перенос длинных строк */
+  word-break: break-word;      /* перенос по словам */
+  overflow-wrap: anywhere;     /* перенос даже без пробелов */
+}
+
+/* Консоль в светлой теме — не используется */
+.console .ok { color: var(--ok); }
+.console .warn { color: var(--warn); }
+.console .err { color: var(--error); }
+
+@media (max-width: 920px) {
+  main { grid-template-columns: 1fr; }
+  .console { height: 45vh; }
+}
+
+/* Переключатель темы — удалён */
