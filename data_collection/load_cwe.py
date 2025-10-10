@@ -1,5 +1,6 @@
 import re
 import os
+import sys
 import requests
 import zipfile
 import io
@@ -162,25 +163,29 @@ def load_cwe(graph, csv_url):
 
 
 def load():
-    neo4j_uri = os.getenv("NEO4J_URI")
-    neo4j_user = os.getenv("NEO4J_USER")
-    neo4j_password = os.getenv("NEO4J_PASSWORD")
-    if not all([neo4j_uri, neo4j_user, neo4j_password]):
-        raise RuntimeError("Отсутствуют NEO4J_URI/NEO4J_USER/NEO4J_PASSWORD. Укажите их в .env")
-    neo4j_db = os.getenv("NEO4J_DATABASE", "neo4j")
-    print(f"Запись в базу: {neo4j_db}")
-    graph = Graph(neo4j_uri, auth=(neo4j_user, neo4j_password), name=neo4j_db)
+    try:
+        neo4j_uri = os.getenv("NEO4J_URI")
+        neo4j_user = os.getenv("NEO4J_USER")
+        neo4j_password = os.getenv("NEO4J_PASSWORD")
+        if not all([neo4j_uri, neo4j_user, neo4j_password]):
+            raise RuntimeError("Отсутствуют NEO4J_URI/NEO4J_USER/NEO4J_PASSWORD. Укажите их в .env")
+        neo4j_db = os.getenv("NEO4J_DATABASE", "neo4j")
+        print(f"Запись в базу: {neo4j_db}")
+        graph = Graph(neo4j_uri, auth=(neo4j_user, neo4j_password), name=neo4j_db)
 
-    # Список URL для разных категорий CWE (можно переопределить через env CWE_CSV_URLS)
-    urls_env = os.getenv("CWE_CSV_URLS")
-    if urls_env:
-        urls = [u.strip() for u in urls_env.split(',') if u.strip()]
-    else:
-        urls = [
-            "https://cwe.mitre.org/data/csv/699.csv.zip",  # Software Development
-            "https://cwe.mitre.org/data/csv/1194.csv.zip",  # Hardware Design
-            "https://cwe.mitre.org/data/csv/1000.csv.zip"  # Research Concepts
-        ]
+        # Список URL для разных категорий CWE (можно переопределить через env CWE_CSV_URLS)
+        urls_env = os.getenv("CWE_CSV_URLS")
+        if urls_env:
+            urls = [u.strip() for u in urls_env.split(',') if u.strip()]
+        else:
+            urls = [
+                "https://cwe.mitre.org/data/csv/699.csv.zip",   # Software Development
+                "https://cwe.mitre.org/data/csv/1194.csv.zip",  # Hardware Design
+                "https://cwe.mitre.org/data/csv/1000.csv.zip"   # Research Concepts
+            ]
 
-    for url in urls:
-        load_cwe(graph, url)
+        for url in urls:
+            load_cwe(graph, url)
+    except Exception as e:
+        print(f"[CRITICAL]: {str(e)}")
+        sys.exit(1)

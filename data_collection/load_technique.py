@@ -1,5 +1,6 @@
 import re
 import os
+import sys
 import requests
 from py2neo import Graph
 from dotenv import load_dotenv
@@ -164,6 +165,7 @@ def load():
         attack_objects = get_attack_techniques()
         process_techniques(attack_objects, graph)
     except Exception as e:
-        print(f"Критическая ошибка: {str(e)}")
+        print(f"[CRITICAL]: {str(e)}")
+        sys.exit(1)
     finally:
         pass

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Выбор CPE — Scenario Generator</title>
+  <link rel="stylesheet" href="/static/css/style.css?v=20251009" />
+</head>
+<body class="page-cpe">
+  <header>
+    <h1>Выбор CPE</h1>
+    <nav class="nav">
+      <a href="/" class="nav-link">Сбор данных</a>
+      <a href="/cpe" class="nav-link active">Выбор CPE</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="controls">
+      <h2>Каталог CPE</h2>
+      <p>Сначала укажите тип (part), затем уточните вендора, продукт и версию. Поля поддерживают автодополнение.</p>
+
+      <form id="cpe-form" class="cpe-form">
+        <div class="field">
+          <label for="part">Тип (part):</label>
+          <div class="input-wrap">
+            <select id="part" name="part" required>
+              <option value="" disabled selected>выберите тип</option>
+              <option value="a">Приложение (a)</option>
+              <option value="o">ОС (o)</option>
+              <option value="h">Оборудование (h)</option>
+            </select>
+            <span id="part-status" class="status" title="Не выбрано"></span>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="vendor">Вендор:</label>
+          <div class="input-wrap">
+            <input id="vendor" name="vendor" type="text" placeholder="например, microsoft" autocomplete="off" />
+            <span id="vendor-status" class="status" title="Не выбрано"></span>
+          </div>
+          <div id="vendor-suggest" class="suggest"></div>
+        </div>
+
+        <div class="field">
+          <label for="product">Продукт:</label>
+          <div class="input-wrap">
+            <input id="product" name="product" type="text" placeholder="например, windows_10" autocomplete="off" />
+            <span id="product-status" class="status" title="Не выбрано"></span>
+          </div>
+          <div id="product-suggest" class="suggest"></div>
+        </div>
+
+        <div class="field">
+          <label for="version">Версия:</label>
+          <div class="input-wrap">
+            <input id="version" name="version" type="text" placeholder="например, 22h2" autocomplete="off" />
+            <span id="version-status" class="status" title="Не выбрано"></span>
+          </div>
+          <div id="version-suggest" class="suggest"></div>
+        </div>
+
+        <div class="actions">
+          <button id="search-btn" type="submit">Найти CPE</button>
+          <button id="reset-btn" type="button" title="Сбросить форму">Сбросить</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="output">
+      <h2>Результаты</h2>
+      <div id="results" class="results"></div>
+      <h2>Выбрано</h2>
+      <ul id="picked" class="picked"></ul>
+    </section>
+  </main>
+
+  <footer>
+    <span>FastAPI UI</span>
+  </footer>
+
+  <script src="/static/js/cpe.js?v=20251009"></script>
+</body>
+</html>
