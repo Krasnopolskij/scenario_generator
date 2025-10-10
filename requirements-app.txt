@@ -1,0 +1,7 @@
+fastapi==0.118.2
+starlette==0.48.0
+uvicorn==0.37.0
+py2neo==2021.2.4
+requests==2.32.5
+tqdm==4.67.1
+python-dotenv==1.1.1

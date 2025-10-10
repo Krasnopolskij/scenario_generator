@@ -1,4 +1,5 @@
 import os
+import sys
 import re
 import gzip
 import json
@@ -317,7 +318,7 @@ def ensure_constraints(graph: Graph):
 
 # Парсинг CPE 2.3
 def parse_cpe23(cpe_uri: str) -> Dict[str, str]:
-    """Грубый разбор CPE 2.3 URI в поля. Сохраняем исходную строку в cpe23Uri.
+    """Разбор CPE 2.3 URI в поля. Сохраняем исходную строку в cpe23Uri.
 
     Формат: cpe:2.3:part:vendor:product:version:update:edition:language:sw_edition:target_sw:target_hw:other
     """
@@ -594,44 +595,49 @@ def update_cisa_kev(graph: Graph):
 
 
 def load():
-    # Подключение к Neo4j
-    neo4j_uri = os.getenv("NEO4J_URI")
-    neo4j_user = os.getenv("NEO4J_USER")
-    neo4j_password = os.getenv("NEO4J_PASSWORD")
-    neo4j_db = os.getenv("NEO4J_DATABASE", "neo4j")
-    if not all([neo4j_uri, neo4j_user, neo4j_password]):
-        raise RuntimeError("Отсутствуют NEO4J_URI/NEO4J_USER/NEO4J_PASSWORD. Укажите их в .env")
-    print(f"Запись в базу: {neo4j_db}")
-    graph = Graph(neo4j_uri, auth=(neo4j_user, neo4j_password), name=neo4j_db)
-
-    # Диапазон лет
-    current_year = dt.datetime.now(dt.UTC).year
-    # Аккуратно парсим годы: пустые/некорректные значения игнорируем
-    raw_from = (os.getenv("NVD_FROM_YEAR") or "").strip()
-    raw_to = (os.getenv("NVD_TO_YEAR") or "").strip()
     try:
-        from_year = int(raw_from) if raw_from else 1999
-    except Exception:
-        from_year = 1999
-    try:
-        to_year = int(raw_to) if raw_to else current_year
-    except Exception:
-        to_year = current_year
-    batch_size = int(os.getenv("NVD_BATCH", 500))
-    also_modified = os.getenv("NVD_ALSO_MODIFIED", "false").lower() in {"1", "true", "yes"}
+        # Подключение к Neo4j
+        neo4j_uri = os.getenv("NEO4J_URI")
+        neo4j_user = os.getenv("NEO4J_USER")
+        neo4j_password = os.getenv("NEO4J_PASSWORD")
+        neo4j_db = os.getenv("NEO4J_DATABASE", "neo4j")
+        
+        if not all([neo4j_uri, neo4j_user, neo4j_password]):
+            raise RuntimeError("Отсутствуют NEO4J_URI/NEO4J_USER/NEO4J_PASSWORD. Укажите их в .env")
+        print(f"Запись в базу: {neo4j_db}")
+        graph = Graph(neo4j_uri, auth=(neo4j_user, neo4j_password), name=neo4j_db)
 
-    t0 = time.time()
-    for y in range(from_year, to_year + 1):
-        import_year(graph, y, batch_size=batch_size)
-        time.sleep(0.3)
+        # Диапазон лет
+        current_year = dt.datetime.now(dt.UTC).year
+        # Аккуратно парсим годы: пустые/некорректные значения игнорируем
+        raw_from = (os.getenv("NVD_FROM_YEAR") or "").strip()
+        raw_to = (os.getenv("NVD_TO_YEAR") or "").strip()
+        try:
+            from_year = int(raw_from) if raw_from else 1999
+        except Exception:
+            from_year = 1999
+        try:
+            to_year = int(raw_to) if raw_to else current_year
+        except Exception:
+            to_year = current_year
+        batch_size = int(os.getenv("NVD_BATCH", 500))
+        also_modified = os.getenv("NVD_ALSO_MODIFIED", "false").lower() in {"1", "true", "yes"}
 
-    if also_modified:
-        import_modified(graph, batch_size=batch_size)
+        t0 = time.time()
+        for y in range(from_year, to_year + 1):
+            import_year(graph, y, batch_size=batch_size)
+            time.sleep(0.3)
 
-    # Обогащение из CISA KEV (опционально, если переменная указана)
-    try:
-        update_cisa_kev(graph)
+        if also_modified:
+            import_modified(graph, batch_size=batch_size)
+
+        # Обогащение из CISA KEV
+        try:
+            update_cisa_kev(graph)
+        except Exception as e:
+            print(f"[KEV] Ошибка обновления: {e}")
+
+        print(f"Импорт CVE завершён за {time.time() - t0:.1f}с")
     except Exception as e:
-        print(f"[KEV] Ошибка обновления: {e}")
-
-    print(f"Импорт CVE завершён за {time.time() - t0:.1f}с")
+        print(f"[CRITICAL]: {str(e)}")
+        sys.exit(1)

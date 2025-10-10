@@ -1,0 +1,28 @@
+# Файлы git и IDE
+.git
+.gitignore
+.idea
+.vscode
+
+# Python кэш и окружение
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.venv
+venv
+env
+.env
+.env.old
+.env.*
+!.env.example
+
+
+# Пока не является рабочей частью проекта
+gnn_mvp
+gnn
+
+# OS
+.DS_Store
+Thumbs.db
