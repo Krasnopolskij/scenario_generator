@@ -114,6 +114,26 @@ def load():
                                         "mitre_id": mitre_id
                                     }
                                 )
+
+                    # Связи CAPEC -> CWE из столбца "Related Weaknesses"
+                    related_weaknesses = row.get('Related Weaknesses', '') or ''
+                    if related_weaknesses:
+                        # В выгрузке значения выглядят как "::276::285::...::" — извлекаем все числа
+                        for num in set(re.findall(r"\d+", related_weaknesses)):
+                            cwe_id = f"CWE-{num}"
+                            graph.run(
+                                """
+                                MERGE (w:CWE {identifier: $cwe_id})
+                                """,
+                                {"cwe_id": cwe_id}
+                            )
+                            graph.run(
+                                """
+                                MATCH (c:CAPEC {identifier: $capec_id}), (w:CWE {identifier: $cwe_id})
+                                MERGE (c)-[:CAPEC_TO_CWE]->(w)
+                                """,
+                                {"capec_id": f"CAPEC-{current_capec_id}", "cwe_id": cwe_id}
+                            )
                     pbar.update(1)
                 pbar.close()
     except Exception as e:
@@ -198,4 +218,22 @@ def mapping(graph):
                                     "mitre_id": mitre_id
                                 }
                             )
+                # Связи CAPEC -> CWE из столбца "Related Weaknesses"
+                related_weaknesses = row.get('Related Weaknesses', '') or ''
+                if related_weaknesses:
+                    for num in set(re.findall(r"\d+", related_weaknesses)):
+                        cwe_id = f"CWE-{num}"
+                        graph.run(
+                            """
+                            MERGE (w:CWE {identifier: $cwe_id})
+                            """,
+                            {"cwe_id": cwe_id}
+                        )
+                        graph.run(
+                            """
+                            MATCH (c:CAPEC {identifier: $capec_id}), (w:CWE {identifier: $cwe_id})
+                            MERGE (c)-[:CAPEC_TO_CWE]->(w)
+                            """,
+                            {"capec_id": f"CAPEC-{current_capec_id}", "cwe_id": cwe_id}
+                        )
                 pbar.update(1)
