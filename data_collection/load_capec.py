@@ -91,7 +91,7 @@ def load():
                     taxonomy_mappings = row.get('Taxonomy Mappings', '')
                     for mapping in taxonomy_mappings.split("::"):
                         if "TAXONOMY NAME:ATTACK" in mapping:
-                            mitre_id = re.search(r'ENTRY ID:T?(\d+)', mapping)
+                            mitre_id = re.search(r'ENTRY ID:T?(\d+(?:\.\d{3})?)', mapping)
                             if mitre_id:
                                 mitre_id = "T" + mitre_id.group(1)
                             if mitre_id:
@@ -197,7 +197,7 @@ def mapping(graph):
                 taxonomy_mappings = row.get('Taxonomy Mappings', '')
                 for mapping_str in taxonomy_mappings.split("::"):
                     if "TAXONOMY NAME:ATTACK" in mapping_str:
-                        mitre_id = re.search(r'ENTRY ID:T?(\d+)', mapping_str)
+                        mitre_id = re.search(r'ENTRY ID:T?(\d+(?:\.\d{3})?)', mapping_str)
                         if mitre_id:
                             mitre_id = "T" + mitre_id.group(1)
                             graph.run(
