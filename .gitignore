@@ -24,4 +24,4 @@ data_collection/nvdcve-2.0-modified.json
 
 # Пока не встроен в проект
 gnn_mvp/
-data_examples
+data_examples/
