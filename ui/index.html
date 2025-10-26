@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Scenario Generator UI</title>
+  <link rel="stylesheet" href="/static/css/style.css?v=20251009" />
+</head>
+<body class="page-data">
+  <header>
+    <h1>Scenario Generator — Загрузка данных</h1>
+    <nav class="nav">
+      <a href="/" class="nav-link active">Сбор данных</a>
+      <a href="/cpe" class="nav-link">Выбор CPE</a>
+      <a href="/graph" class="nav-link">Граф</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="controls">
+      <h2>Что запустить</h2>
+      <p>Если ничего не выбрано — выполняется полный цикл сбора данных (техники → CAPEC → CWE → CVE).</p>
+      <form id="run-form">
+        <fieldset>
+          <legend>Выбор загрузчиков (ONLY)</legend>
+          <label><input type="checkbox" name="only" value="techniques" /> Техники</label>
+          <label><input type="checkbox" name="only" value="capec" /> CAPEC</label>
+          <label><input type="checkbox" name="only" value="cwe" /> CWE</label>
+          <label><input type="checkbox" name="only" value="cve" /> CVE</label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Пропустить (SKIP)</legend>
+          <label><input type="checkbox" name="skip" value="techniques" /> Техники</label>
+          <label><input type="checkbox" name="skip" value="capec" /> CAPEC</label>
+          <label><input type="checkbox" name="skip" value="cwe" /> CWE</label>
+          <label><input type="checkbox" name="skip" value="cve" /> CVE</label>
+        </fieldset>
+
+        <div class="field">
+          <label for="cve_from_year">Начало сбора данных о CVE (опционально):</label>
+          <input type="number" id="cve_from_year" name="cve_from_year" placeholder="например, 2018" />
+        </div>
+
+        <div class="actions">
+          <button id="run-btn" type="submit">Запустить</button>
+          <button id="stop-btn" type="button" disabled>Остановить</button>
+          <button id="clear-btn" type="button" title="Очистить вывод">Очистить</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="output">
+      <h2>Вывод</h2>
+      <pre id="output" class="console" tabindex="0"></pre>
+    </section>
+  </main>
+
+  <footer>
+    <span></span>
+  </footer>
+
+  <script src="/static/js/app.js?v=20251009"></script>
+</body>
+</html>

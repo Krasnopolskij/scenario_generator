@@ -6,15 +6,15 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 
-# Environments
+# Окружение
 venv/
 .env
+.env.old
 
-# OS / tools
+# OS
 .DS_Store
 Thumbs.db
 
-# Data and large artifacts
 *.json.gz
 data_collection/nvdcve-2.0-modified.json
 
@@ -22,3 +22,6 @@ data_collection/nvdcve-2.0-modified.json
 .vscode/
 .idea/
 
+# Пока не встроен в проект
+gnn_mvp/
+data_examples/

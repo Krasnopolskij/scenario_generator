@@ -1,0 +1,33 @@
+services:
+  neo4j:
+    image: neo4j:5.25-community
+    container_name: scenario_neo4j
+    environment:
+      # Учётные данные БД, задать в .env (NEO4J_AUTH=user/password)
+      - NEO4J_AUTH=${NEO4J_AUTH}
+      - NEO4J_dbms_default__database=${NEO4J_DATABASE}
+    ports:
+      - "7474:7474"   # Веб-интерфейс Neo4j (HTTP)
+      - "7687:7687"   # Протокол Bolt
+    volumes:
+      - neo4j_data:/data   # Данные БД
+      - neo4j_logs:/logs   # Логи БД
+
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      network: host
+    container_name: scenario_app
+    depends_on:
+      - neo4j
+    ports:
+      - "8000:8000"   # Веб-UI приложения
+    # Переменные окружения для приложения читаются из .env в корне автоматически
+    env_file:
+      - .env
+
+volumes:
+  neo4j_data:
+  neo4j_logs:
+

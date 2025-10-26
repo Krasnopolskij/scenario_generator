@@ -1,4 +1,5 @@
 import os
+import sys
 import re
 import gzip
 import json
@@ -10,6 +11,7 @@ from py2neo import Graph
 from tqdm import tqdm
 
 NVD_BASE = os.getenv("NVD_FEED_BASE", "https://nvd.nist.gov/feeds/json/cve/2.0")
+DEFAULT_CISA_KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 
 # EPSS
 def _fetch_epss_batch(base_url: str, cve_batch: List[str]) -> Dict[str, Dict[str, Optional[float]]]:
@@ -316,7 +318,7 @@ def ensure_constraints(graph: Graph):
 
 # Парсинг CPE 2.3
 def parse_cpe23(cpe_uri: str) -> Dict[str, str]:
-    """Грубый разбор CPE 2.3 URI в поля. Сохраняем исходную строку в cpe23Uri.
+    """Разбор CPE 2.3 URI в поля. Сохраняем исходную строку в cpe23Uri.
 
     Формат: cpe:2.3:part:vendor:product:version:update:edition:language:sw_edition:target_sw:target_hw:other
     """
@@ -534,30 +536,108 @@ def import_modified(graph: Graph, batch_size: int = 500):
     print("[OK] Модифицированный фид импортирован")
 
 
+def update_cisa_kev(graph: Graph):
+    """Обогащает CVE флагом присутствия в CISA KEV и сроком устранения.
+
+    Использует CISA_KEV_URL из .env (или дефолтный URL). Безопасно к повторным запускам.
+    """
+    kev_url = os.getenv("CISA_KEV_URL", DEFAULT_CISA_KEV_URL)
+    try:
+        resp = requests.get(kev_url, timeout=20)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        print(f"[KEV] Ошибка загрузки KEV: {e}")
+        return
+
+    vulns = data.get("vulnerabilities") or []
+    if not vulns:
+        print("[KEV] Пустой список уязвимостей")
+        return
+
+    # Собираем список CVE и dueDate
+    items: List[Tuple[str, Optional[str]]] = []
+    kev_ids: List[str] = []
+    for v in vulns:
+        cve_id = v.get("cveID")
+        if not cve_id:
+            continue
+        kev_ids.append(cve_id)
+        items.append((cve_id, v.get("dueDate")))
+
+    print(f"[KEV] Обновление флагов для {len(items)} CVE…")
+
+    # Обновляем пачками
+    batch_size = 500
+    for i in range(0, len(items), batch_size):
+        batch = items[i:i + batch_size]
+        graph.run(
+            """
+            UNWIND $rows AS r
+            MATCH (v:CVE {identifier: r[0]})
+            SET v.in_cisa_kev = true,
+                v.cisa_kev_due_date = r[1]
+            """,
+            rows=batch,
+        )
+
+    # Снимаем флаг у CVE, которые ранее были помечены, но больше не в KEV
+    graph.run(
+        """
+        MATCH (v:CVE)
+        WHERE coalesce(v.in_cisa_kev,false) = true AND NOT v.identifier IN $ids
+        REMOVE v.cisa_kev_due_date
+        SET v.in_cisa_kev = false
+        """,
+        ids=kev_ids,
+    )
+    print("[KEV] Обновление завершено")
+
+
 def load():
-    # Подключение к Neo4j
-    neo4j_uri = os.getenv("NEO4J_URI")
-    neo4j_user = os.getenv("NEO4J_USER")
-    neo4j_password = os.getenv("NEO4J_PASSWORD")
-    neo4j_db = os.getenv("NEO4J_DATABASE", "neo4j")
-    if not all([neo4j_uri, neo4j_user, neo4j_password]):
-        raise RuntimeError("Отсутствуют NEO4J_URI/NEO4J_USER/NEO4J_PASSWORD. Укажите их в .env")
-    print(f"Запись в базу: {neo4j_db}")
-    graph = Graph(neo4j_uri, auth=(neo4j_user, neo4j_password), name=neo4j_db)
+    try:
+        # Подключение к Neo4j
+        neo4j_uri = os.getenv("NEO4J_URI")
+        neo4j_user = os.getenv("NEO4J_USER")
+        neo4j_password = os.getenv("NEO4J_PASSWORD")
+        neo4j_db = os.getenv("NEO4J_DATABASE", "neo4j")
+        
+        if not all([neo4j_uri, neo4j_user, neo4j_password]):
+            raise RuntimeError("Отсутствуют NEO4J_URI/NEO4J_USER/NEO4J_PASSWORD. Укажите их в .env")
+        print(f"Запись в базу: {neo4j_db}")
+        graph = Graph(neo4j_uri, auth=(neo4j_user, neo4j_password), name=neo4j_db)
 
-    # Диапазон лет
-    current_year = dt.datetime.now(dt.UTC).year
-    from_year = int(os.getenv("NVD_FROM_YEAR", 2002))
-    to_year = int(os.getenv("NVD_TO_YEAR", current_year))
-    batch_size = int(os.getenv("NVD_BATCH", 500))
-    also_modified = os.getenv("NVD_ALSO_MODIFIED", "false").lower() in {"1", "true", "yes"}
+        # Диапазон лет
+        current_year = dt.datetime.now(dt.UTC).year
+        # Аккуратно парсим годы: пустые/некорректные значения игнорируем
+        raw_from = (os.getenv("NVD_FROM_YEAR") or "").strip()
+        raw_to = (os.getenv("NVD_TO_YEAR") or "").strip()
+        try:
+            from_year = int(raw_from) if raw_from else 1999
+        except Exception:
+            from_year = 1999
+        try:
+            to_year = int(raw_to) if raw_to else current_year
+        except Exception:
+            to_year = current_year
+        batch_size = int(os.getenv("NVD_BATCH", 500))
+        also_modified = os.getenv("NVD_ALSO_MODIFIED", "false").lower() in {"1", "true", "yes"}
 
-    t0 = time.time()
-    for y in range(from_year, to_year + 1):
-        import_year(graph, y, batch_size=batch_size)
-        time.sleep(0.3)
+        t0 = time.time()
+        for y in range(from_year, to_year + 1):
+            import_year(graph, y, batch_size=batch_size)
+            time.sleep(0.3)
 
-    if also_modified:
-        import_modified(graph, batch_size=batch_size)
+        if also_modified:
+            import_modified(graph, batch_size=batch_size)
 
-    print(f"Импорт CVE завершён за {time.time() - t0:.1f}с")
+        # Обогащение из CISA KEV
+        try:
+            update_cisa_kev(graph)
+        except Exception as e:
+            print(f"[KEV] Ошибка обновления: {e}")
+
+        print(f"Импорт CVE завершён за {time.time() - t0:.1f}с")
+    except Exception as e:
+        print(f"[CRITICAL]: {str(e)}")
+        sys.exit(1)
