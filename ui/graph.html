@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Граф — Scenario Generator</title>
+  <link rel="stylesheet" href="/static/css/style.css?v=20251009" />
+
+</head>
+<body class="page-graph">
+  <header>
+    <h1>Визуализация связей CPE</h1>
+    <nav class="nav">
+      <a href="/" class="nav-link">Сбор данных</a>
+      <a href="/cpe" class="nav-link">Выбор CPE</a>
+      <a href="/graph" class="nav-link active">Граф</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="controls">
+      <form id="graph-form" class="form-inline">
+        <label for="cpe">cpe23Uri:</label>
+        <input id="cpe" name="cpe" type="text" placeholder="например, cpe:2.3:a:linkace:linkace:*:*:*:*:*:*:*:*" />
+        <select id="mode" name="mode">
+          <option value="full" selected>Полный (CVE→CWE→CAPEC→Technique)</option>
+          <option value="simple">Только CVE→CPE</option>
+        </select>
+        
+        <button id="draw-btn" type="submit">Построить</button>
+      </form>
+      <p class="hint">Для большого графа используйте режим "Только CVE→CPE".</p>
+    </section>
+
+    <section>
+      <div id="graph"></div>
+    </section>
+
+    <aside class="inspector">
+      <h2>Свойства узла</h2>
+      <div id="inspector-content" class="kv">
+        <div class="row"><div class="k">Подсказка</div><div class="v">Кликните по узлу на графе</div></div>
+      </div>
+    </aside>
+  </main>
+
+  <footer>
+    <span>FastAPI UI</span>
+  </footer>
+
+  <!-- Локальная библиотека Cytoscape -->
+  <script src="/static/js/vendor/cytoscape.js-3.33.1/dist/cytoscape.min.js"></script>
+  <script src="/static/js/graph.js?v=20251009"></script>
+</body>
+</html>

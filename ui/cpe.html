@@ -12,6 +12,7 @@
     <nav class="nav">
       <a href="/" class="nav-link">Сбор данных</a>
       <a href="/cpe" class="nav-link active">Выбор CPE</a>
+      <a href="/graph" class="nav-link">Граф</a>
     </nav>
   </header>
 
@@ -75,6 +76,21 @@
       <ul id="picked" class="picked"></ul>
     </section>
   </main>
+
+  <!-- Модальное окно подтверждения перехода к визуализации -->
+  <div id="graph-confirm-backdrop" class="modal-backdrop" hidden>
+    <div class="modal">
+      <div class="modal-title">Переход к визуализации</div>
+      <div class="modal-body">
+        Нажмите «Подтвердить» для перехода на страницу визуализации выборки связанных объектов из базы данных.
+        Информация на текущей странице будет потеряна.
+      </div>
+      <div class="modal-actions">
+        <button id="modal-cancel" class="btn-secondary">Отмена</button>
+        <button id="modal-confirm" class="btn-primary">Подтвердить</button>
+      </div>
+    </div>
+  </div>
 
   <footer>
     <span>FastAPI UI</span>

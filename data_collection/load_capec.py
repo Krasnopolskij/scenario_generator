@@ -118,7 +118,7 @@ def load():
                     # Связи CAPEC -> CWE из столбца "Related Weaknesses"
                     related_weaknesses = row.get('Related Weaknesses', '') or ''
                     if related_weaknesses:
-                        # В выгрузке значения выглядят как "::276::285::...::" — извлекаем все числа
+                        # В выгрузке значения выглядят как "::276::285::...::", извлекаем все числа
                         for num in set(re.findall(r"\d+", related_weaknesses)):
                             cwe_id = f"CWE-{num}"
                             graph.run(

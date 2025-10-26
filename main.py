@@ -37,6 +37,12 @@ def cpe_page() -> FileResponse:
     return FileResponse(str(page))
 
 
+@app.get("/graph")
+def graph_page() -> FileResponse:
+    page = ui_dir / "graph.html"
+    return FileResponse(str(page))
+
+
 ALLOWED_LOADERS = {"techniques", "capec", "cwe", "cve"}
 
 # Регистрация запущенных процессов: run_id -> Popen
@@ -58,6 +64,98 @@ def get_graph() -> Graph:
         raise RuntimeError("Отсутствуют NEO4J_URI/NEO4J_USER/NEO4J_PASSWORD. Укажите их в .env")
     _GRAPH = Graph(neo4j_uri, auth=(neo4j_user, neo4j_password), name=neo4j_db)
     return _GRAPH
+
+
+@app.get("/api/graph/subgraph")
+def api_graph_subgraph(cpe: str, mode: str = "full", limit: int = 1000):
+    g = get_graph()
+    limit = max(1, min(int(limit or 1000), 5000))
+
+    # Нормализация входа: иногда прилетает строка вида "cpe23Uri: cpe:2.3:..."
+    cpe_in = (cpe or "").strip()
+    idx = cpe_in.find("cpe:2.3")
+    if idx != -1:
+        cpe_in = cpe_in[idx:]
+
+    if mode == "simple":
+        cypher = (
+            "MATCH p=(v:CVE)-[:AFFECTS]->(cpe:CPE {cpe23Uri:$cpe}) "
+            "RETURN p LIMIT $limit"
+        )
+        params = {"cpe": cpe_in, "limit": limit}
+    else:
+        cypher = (
+            "MATCH (cpe:CPE {cpe23Uri: $cpe}) "
+            "MATCH p1=(v:CVE)-[:AFFECTS]->(cpe) "
+            "OPTIONAL MATCH p2=(w:CWE)-[:CWE_TO_CVE]->(v) "
+            "OPTIONAL MATCH p3=(cap:CAPEC)-[:CAPEC_TO_CWE]->(w) "
+            "OPTIONAL MATCH p4=(cap)-[:CAPEC_TO_TECHNIQUE]->(t:Technique) "
+            "WITH collect(p1)+collect(p2)+collect(p3)+collect(p4) AS paths "
+            "UNWIND paths AS p "
+            "WITH p WHERE p IS NOT NULL "
+            "RETURN DISTINCT p LIMIT $limit"
+        )
+        params = {"cpe": cpe_in, "limit": limit}
+
+    rows = g.run(cypher, **params)
+
+    nodes = {}
+    edges = {}
+
+    def add_node(n):
+        try:
+            nid = str(int(n.identity))
+        except Exception:
+            nid = str(n.identity)
+        if nid in nodes:
+            return
+        labels = list(n.labels) if hasattr(n, "labels") else []
+        props = dict(n)
+        label = labels[0] if labels else "Node"
+        # Короткая подпись на узле (как просили): CPE, CVE, CWE, Tech, CAPEC
+        short = {
+            "CPE": "CPE",
+            "CVE": "CVE",
+            "CWE": "CWE",
+            "Technique": "Tech",
+            "CAPEC": "CAPEC",
+        }.get(label, label or "Node")
+        nodes[nid] = {"id": nid, "group": label, "label": short, "props": props}
+
+    def add_edge(r):
+        try:
+            rid = str(int(r.identity))
+        except Exception:
+            rid = str(r.identity)
+        if rid in edges:
+            return
+        try:
+            s = str(int(r.start_node.identity))
+            t = str(int(r.end_node.identity))
+        except Exception:
+            s = str(r.start_node.identity)
+            t = str(r.end_node.identity)
+        etype = r.__class__.__name__
+        edges[rid] = {"id": rid, "source": s, "target": t, "type": etype}
+
+    for row in rows:
+        # py2neo Record supports key access by column name
+        p = None
+        try:
+            p = row["p"]
+        except Exception:
+            try:
+                p = row[0]
+            except Exception:
+                p = None
+        if p is None:
+            continue
+        for n in getattr(p, "nodes", []):
+            add_node(n)
+        for r in getattr(p, "relationships", []):
+            add_edge(r)
+
+    return {"nodes": list(nodes.values()), "edges": list(edges.values())}
 
 
 def build_command(only: Optional[List[str]], skip: Optional[List[str]], cve_from_year: Optional[int]) -> List[str]:

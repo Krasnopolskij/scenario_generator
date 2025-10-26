@@ -202,7 +202,7 @@
   function renderResults(items) {
     btnByCpe.clear();
     if (!items || items.length === 0) { results.innerHTML = '<div class="muted">Ничего не найдено</div>'; return; }
-    // Убираем дубли по cpe23Uri на всякий случай
+
     const seen = new Set();
     const frag = document.createDocumentFragment();
     items.forEach(row => {
@@ -216,7 +216,7 @@
       const btn = document.createElement('button');
       btn.textContent = 'Выбрать';
       btn.dataset.cpe = row.cpe23Uri;
-      // Если уже выбрано — сразу подсветить
+
       if (pickedSet.has(row.cpe23Uri)) setBtnSelected(btn, true);
       right.appendChild(btn);
       div.appendChild(left); div.appendChild(right);
@@ -228,7 +228,33 @@
   }
 
   const pickedSet = new Set();
-  const pickedMap = new Map(); // cpe -> <li>
+  const pickedMap = new Map();
+  const modal = document.getElementById('graph-confirm-backdrop');
+  const modalCancel = document.getElementById('modal-cancel');
+  const modalConfirm = document.getElementById('modal-confirm');
+  let pendingCpeToVisualize = null;
+
+  function openModal(cpe) {
+    pendingCpeToVisualize = cpe;
+    if (modal) { modal.hidden = false; modal.classList.add('open'); }
+  }
+
+  function closeModal() {
+    pendingCpeToVisualize = null;
+    if (modal) { modal.classList.remove('open'); modal.hidden = true; }
+  }
+
+  if (modalCancel) modalCancel.addEventListener('click', closeModal);
+  if (modal) modal.addEventListener('click', (e) => {
+    if (e.target === modal) closeModal();
+  });
+  if (modalConfirm) modalConfirm.addEventListener('click', () => {
+    if (!pendingCpeToVisualize) { closeModal(); return; }
+    const uri = encodeURIComponent(pendingCpeToVisualize);
+    closeModal();
+    // Переходим на страницу графа, передаём cpe через query
+    window.location.href = `/graph?cpe=${uri}`;
+  });
 
   function removePicked(cpe) {
     if (!pickedSet.has(cpe)) return;
@@ -241,16 +267,27 @@
   }
 
   function addPicked(cpe) {
-    if (pickedSet.has(cpe)) return; // уже добавлено
+    if (pickedSet.has(cpe)) return;
     pickedSet.add(cpe);
     const li = document.createElement('li');
     li.dataset.cpe = cpe;
-    li.textContent = cpe;
+
+    const txt = document.createElement('span');
+    txt.textContent = cpe;
+    txt.style.wordBreak = 'break-all';
+    const actions = document.createElement('span');
+    actions.className = 'picked-actions';
+    const show = document.createElement('button');
+    show.textContent = 'Отобразить связи';
+    show.className = 'btn-link';
+    show.addEventListener('click', (e) => { e.preventDefault(); openModal(cpe); });
     const rm = document.createElement('button');
     rm.textContent = '×';
-    rm.style.marginLeft = '8px';
     rm.addEventListener('click', () => removePicked(cpe));
-    li.appendChild(rm);
+    actions.appendChild(show);
+    actions.appendChild(rm);
+    li.appendChild(txt);
+    li.appendChild(actions);
     picked.appendChild(li);
     pickedMap.set(cpe, li);
   }

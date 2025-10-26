@@ -29,14 +29,12 @@
       if (isBarLike) {
         key = seg.replace(/\s\[[^\]]*\]\s*$/, '').trimEnd();
         isFinal = /100%\|/.test(seg) || (/\b100%\b/.test(seg) && /\]/.test(seg));
-        // Если это повторы финальной строки того же бара — пропускаем полностью
         if (lastFinalKey && key === lastFinalKey) {
           continue;
         }
       }
 
       if (i === 0) {
-        // Первая часть — всегда просто добавляем
         appendRaw(seg);
       } else {
         if (isBarLike) {
@@ -49,13 +47,12 @@
           output.textContent = head + seg;
           output.scrollTop = output.scrollHeight;
         } else {
-          // Не прогресс — выходим из режима бара и дописываем
           inBar = false;
           appendRaw(seg);
         }
       }
 
-      // Финал бара: зафиксировать ровно один раз
+      // Завершаем бар, если это финал
       if (isBarLike && isFinal) {
         if (lastFinalKey !== key) {
           lastFinalKey = key;
