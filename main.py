@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from py2neo import Graph
 from dotenv import load_dotenv
 from cpe import search as cpe_search
+from scenario_generation.generator import generate_scenarios
 
 ROOT = Path(__file__).parent.resolve()
 load_dotenv() 
@@ -413,3 +414,29 @@ def api_cpe_search(part: str, vendor: str = "", product: str = "", version: str 
     g = get_graph()
     items = cpe_search.search(g, part=part, vendor=vendor, product=product, version=version, limit=min(max(limit, 1), 200))
     return {"items": items}
+
+
+# Scenarios API
+@app.get("/api/scenarios")
+def api_scenarios(cpe: str, mode: str = "strict", max_per_tactic: int = 3):
+    g = get_graph()
+    # Нормализуем вход (как в /api/graph/subgraph)
+    cpe_in = (cpe or "").strip()
+    idx = cpe_in.find("cpe:2.3")
+    if idx != -1:
+        cpe_in = cpe_in[idx:]
+
+    m = (mode or "strict").strip().lower()
+    if m not in ("strict", "relaxed"):
+        m = "strict"
+    try:
+        mpt = int(max_per_tactic)
+        if mpt <= 0:
+            mpt = 1
+        if mpt > 10:
+            mpt = 10
+    except Exception:
+        mpt = 3
+
+    data = generate_scenarios(g, cpe_in, mode=m, max_per_tactic=mpt)
+    return data

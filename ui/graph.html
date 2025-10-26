@@ -13,12 +13,13 @@
     <nav class="nav">
       <a href="/" class="nav-link">Сбор данных</a>
       <a href="/cpe" class="nav-link">Выбор CPE</a>
-      <a href="/graph" class="nav-link active">Граф</a>
+      <a href="/graph" class="nav-link active">Визуализация</a>
     </nav>
   </header>
 
   <main>
     <section class="controls">
+      <h2>Построение связей CPE</h2>
       <form id="graph-form" class="form-inline">
         <label for="cpe">cpe23Uri:</label>
         <input id="cpe" name="cpe" type="text" placeholder="например, cpe:2.3:a:linkace:linkace:*:*:*:*:*:*:*:*" />
@@ -32,6 +33,28 @@
         </div>
       </form>
       <p class="hint">Для большого графа используйте режим "Только CVE→CPE".</p>
+
+      <h2>Генерация сценариев</h2>
+      <div class="scenarios-ctrl">
+        <div class="field">
+          <label for="sc-mode">Режим:</label>
+          <select id="sc-mode">
+            <option value="strict" selected>Строгий</option>
+            <option value="relaxed">Нестрогий</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="sc-max-per-tactic">Максимум техник на тактику:</label>
+          <div class="input-wrap">
+            <input id="sc-max-per-tactic" type="number" min="1" max="10" step="1" value="2" />
+          </div>
+        </div>
+        <div class="actions sc-actions">
+          <button id="gen-scenarios" type="button">Сгенерировать сценарии</button>
+          <button id="clear-scenarios" type="button" title="Очистить список и подсветку">Очистить</button>
+        </div>
+        <div id="scenarios-list" class="scenarios"></div>
+      </div>
     </section>
 
     <section>

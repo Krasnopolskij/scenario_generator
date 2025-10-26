@@ -37,6 +37,16 @@ label { display: inline-flex; align-items: center; gap: 8px; margin: 6px 10px 6p
 input[type="number"], input[type="text"] {
   background: #0f1326; border: 1px solid #1d2342; color: var(--text); border-radius: 8px; padding: 8px 10px; outline: none;
 }
+/* Убираем белые стрелки у number в WebKit-браузерах */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+/* И в Firefox приводим к текстовому виду */
+input[type="number"] {
+  -moz-appearance: textfield;
+}
 input[type="number"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79, 140, 255, 0.2); }
 select {
   background: #0f1326; border: 1px solid #1d2342; color: var(--text); border-radius: 8px; padding: 8px 10px; outline: none;
@@ -205,7 +215,7 @@ button.selected { background: var(--ok); }
 /* Страница визуализации графа */
 .page-graph main {
   display: grid !important;
-  grid-template-columns: 420px minmax(0,1fr) 360px !important;
+  grid-template-columns: 560px minmax(0,1fr) 360px !important;
   grid-template-rows: 1fr !important;
   gap: 20px;
   align-items: stretch;
@@ -248,3 +258,20 @@ button.selected { background: var(--ok); }
 .page-graph .form-inline label { font-size: 13px; color: var(--muted); }
 .page-graph .form-inline input[type="text"] { width: 100%; }
 .page-graph #draw-btn { width: fit-content; }
+
+/* Сценарии на странице графа */
+.scenarios-ctrl { margin-top: 12px; }
+.scenarios-ctrl .actions.sc-actions { display: flex; justify-content: flex-start; align-items: center; gap: 10px; }
+.scenarios { margin-top: 10px; display: grid; gap: 8px; }
+.sc-meta { color: var(--muted); font-size: 12px; }
+.scenario { border: 1px solid #1d2342; border-radius: 8px; background: #0f1326; }
+.scenario-head { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; padding: 8px 10px; border-bottom: 1px solid #1d2342; }
+.scenario-title { font-weight: 700; font-size: 13px; }
+.scenario-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.scenario-actions button { background: #2a3052; color: var(--text); width: 100%; }
+.scenario-actions button.selected { background: var(--ok) !important; }
+.scenario-steps { max-height: 220px; overflow: auto; }
+.scenario-step { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 6px 10px; border-bottom: 1px solid #1d2342; cursor: pointer; }
+.scenario-step:last-child { border-bottom: 0; }
+.chip { display: inline-block; font-size: 12px; padding: 2px 6px; border-radius: 999px; background: #1d2342; color: var(--text); margin-left: 6px; border: 1px solid #2a3052; }
+.chip:hover { border-color: var(--accent); }
