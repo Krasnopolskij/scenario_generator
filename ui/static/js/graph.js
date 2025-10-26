@@ -4,8 +4,105 @@
   const modeSel = document.getElementById('mode');
   const container = document.getElementById('graph');
   const inspector = document.getElementById('inspector-content');
+  const clearBtn = document.getElementById('clear-graph');
+  const LS_FORM = 'sg:graph:form';
+  const LS_SNAP = 'sg:graph:snapshot';
+  const SNAP_LIMIT = 2 * 1024 * 1024; // 2MB
 
   let cy = null;
+
+  const debounce = (fn, ms=250) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+
+  function saveForm() {
+    try { localStorage.setItem(LS_FORM, JSON.stringify({ cpe: cpeInput.value || '', mode: modeSel.value || 'full' })); } catch (e) { console.warn('ls save graph form', e); }
+  }
+
+  function restoreForm() {
+    try {
+      const raw = localStorage.getItem(LS_FORM);
+      if (!raw) return;
+      const d = JSON.parse(raw);
+      if (d && typeof d === 'object') {
+        if (typeof d.cpe === 'string' && d.cpe && !new URLSearchParams(window.location.search).get('cpe')) cpeInput.value = d.cpe;
+        if (typeof d.mode === 'string') modeSel.value = d.mode === 'simple' ? 'simple' : 'full';
+      }
+    } catch (e) { console.warn('ls load graph form', e); }
+  }
+
+  function trySaveSnapshot() {
+    if (!cy) return;
+    const snap = { cy: cy.json(), zoom: cy.zoom(), pan: cy.pan(), ts: Date.now() };
+    let s = '';
+    try { s = JSON.stringify(snap); } catch (e) { console.warn('snap stringify', e); return; }
+    try {
+      const size = new Blob([s]).size;
+      if (size > SNAP_LIMIT) return;
+      localStorage.setItem(LS_SNAP, s);
+    } catch (e) { console.warn('ls save graph snapshot', e); }
+  }
+  const saveSnapshotDebounced = debounce(trySaveSnapshot, 400);
+
+  function restoreSnapshotIfAny() {
+    if (new URLSearchParams(window.location.search).get('cpe')) return;
+    try {
+      const raw = localStorage.getItem(LS_SNAP);
+      if (!raw) return false;
+      const snap = JSON.parse(raw);
+      if (!window.cytoscape) return false;
+      if (cy) { cy.destroy(); cy = null; }
+      const elements = (snap.cy && snap.cy.elements) ? snap.cy.elements : [];
+      cy = cytoscape({
+        container,
+        elements,
+        style: [
+          { selector: 'node', style: {
+            'label': 'data(label)',
+            'color': '#e5e7ef',
+            'font-size': 12,
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'text-wrap': 'none',
+            'background-color': ele => colorByGroup(ele.data('group')),
+            'shape': 'ellipse',
+            'border-width': 1,
+            'border-color': '#2a3052',
+            'width': 46,
+            'height': 46,
+            'padding': 0
+          }},
+          { selector: 'node.sel', style: {
+            'border-width': 3,
+            'border-color': '#4f8cff',
+            'z-index': 999
+          }},
+          { selector: 'node.neigh', style: {
+            'border-width': 2,
+            'border-color': '#3b4775'
+          }},
+          { selector: 'edge', style: {
+            'curve-style': 'bezier',
+            'target-arrow-shape': 'none',
+            'line-color': ele => edgeColor(ele.data('type')),
+            'width': 1.2,
+            'opacity': 0.85
+          }},
+        ],
+        layout: { name: 'preset' }
+      });
+      if (snap.pan) cy.pan(snap.pan);
+      if (typeof snap.zoom === 'number') cy.zoom(snap.zoom);
+      cy.on('tap', 'node', (evt) => {
+        cy.elements().removeClass('sel neigh');
+        const ele = evt.target;
+        ele.addClass('sel');
+        ele.closedNeighborhood().difference(ele).addClass('neigh');
+        renderInspector(ele);
+      });
+      cy.on('tap', (evt) => { if (evt.target === cy) { cy.elements().removeClass('sel neigh'); renderInspector(null); } });
+      cy.on('free zoom pan', saveSnapshotDebounced);
+      return true;
+    } catch (e) { console.warn('ls load graph snapshot', e); return false; }
+  }
 
   function colorByGroup(group) {
     switch (group) {
@@ -61,6 +158,7 @@
       alert('Укажите cpe23Uri');
       return;
     }
+    saveForm();
     const params = new URLSearchParams({ cpe, mode, limit: '2000' });
     const resp = await fetch(`/api/graph/subgraph?${params.toString()}`);
     if (!resp.ok) {
@@ -150,12 +248,16 @@
         renderInspector(null);
       }
     });
+    cy.on('free zoom pan', saveSnapshotDebounced);
+    trySaveSnapshot();
   }
 
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     draw();
   });
+  cpeInput.addEventListener('input', debounce(saveForm, 200));
+  modeSel.addEventListener('change', saveForm);
 
   // Предзаполнение поля из query-параметра ?cpe=...
   try {
@@ -163,4 +265,18 @@
     const qCpe = sp.get('cpe');
     if (qCpe && cpeInput) cpeInput.value = qCpe;
   } catch {}
+
+  restoreForm();
+  restoreSnapshotIfAny();
+
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      if (cy) { cy.destroy(); cy = null; }
+      container.innerHTML = '';
+      cpeInput.value = '';
+      modeSel.value = 'full';
+      try { localStorage.removeItem(LS_FORM); } catch (e) { console.warn('ls clear graph form', e); }
+      try { localStorage.removeItem(LS_SNAP); } catch (e) { console.warn('ls clear graph snap', e); }
+    });
+  }
 })();

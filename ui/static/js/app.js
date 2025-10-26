@@ -4,6 +4,7 @@
   const stopBtn = document.getElementById('stop-btn');
   const output = document.getElementById('output');
   const clearBtn = document.getElementById('clear-btn');
+  const LS_KEY = 'sg:data:filters';
 
   let abortController = null;
   let currentRunId = null;
@@ -173,8 +174,37 @@
   // Взаимоисключающие чекбоксы ONLY/SKIP
   form.querySelectorAll('input[name="only"], input[name="skip"]').forEach(cb => {
     cb.addEventListener('change', updateDisable);
+    cb.addEventListener('change', () => {
+      try {
+        localStorage.setItem(LS_KEY, JSON.stringify(gatherValues()));
+      } catch (e) { console.warn('ls save filters', e); }
+    });
   });
   updateDisable();
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) {
+      const data = JSON.parse(raw);
+      const setChecks = (name, vals=[]) => {
+        const set = new Set(vals);
+        form.querySelectorAll(`input[name="${name}"]`).forEach(cb => { cb.checked = set.has(cb.value); });
+      };
+      setChecks('only', Array.isArray(data.only) ? data.only : []);
+      setChecks('skip', Array.isArray(data.skip) ? data.skip : []);
+      if (typeof data.cve_from_year === 'number') {
+        const y = form.querySelector('#cve_from_year'); if (y) y.value = String(data.cve_from_year);
+      } else {
+        const y = form.querySelector('#cve_from_year'); if (y) y.value = '';
+      }
+      updateDisable();
+    }
+  } catch (e) { console.warn('ls load filters', e); }
+  const yearInput = form.querySelector('#cve_from_year');
+  if (yearInput) {
+    yearInput.addEventListener('input', () => {
+      try { localStorage.setItem(LS_KEY, JSON.stringify(gatherValues())); } catch (e) { console.warn('ls save year', e); }
+    });
+  }
 
   stopBtn.addEventListener('click', async () => {
     if (!currentRunId) {
@@ -205,5 +235,9 @@
 
   clearBtn.addEventListener('click', () => {
     output.textContent = '';
+    form.querySelectorAll('input[name="only"], input[name="skip"]').forEach(cb => { cb.checked = false; cb.disabled = false; });
+    const y = form.querySelector('#cve_from_year'); if (y) y.value = '';
+    updateDisable();
+    try { localStorage.removeItem(LS_KEY); } catch (e) { console.warn('ls clear filters', e); }
   });
 })();

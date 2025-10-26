@@ -15,6 +15,10 @@
   const picked = $('#picked');
   const form = $('#cpe-form');
   const resetBtn = document.getElementById('reset-btn');
+  const resetFiltersBtn = document.getElementById('reset-filters-btn');
+  const LS_FILTERS = 'sg:cpe:filters';
+  const LS_PICKED = 'sg:cpe:picked';
+  const LS_LAST_QUERY = 'sg:cpe:lastQuery';
 
   function debounce(fn, ms=200) {
     let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
@@ -234,6 +238,32 @@
   const modalConfirm = document.getElementById('modal-confirm');
   let pendingCpeToVisualize = null;
 
+  function saveFilters() {
+    try {
+      const data = {
+        part: partEl.value || '',
+        vendor: vendorEl.value || '',
+        product: productEl.value || '',
+        version: versionEl.value || ''
+      };
+      localStorage.setItem(LS_FILTERS, JSON.stringify(data));
+    } catch (e) { console.warn('ls save cpe filters', e); }
+  }
+
+  function loadFilters() {
+    try {
+      const raw = localStorage.getItem(LS_FILTERS);
+      if (!raw) return;
+      const d = JSON.parse(raw);
+      if (d && typeof d === 'object') {
+        if (d.part) { partEl.value = d.part; setStatus(partStatus, !!d.part); }
+        if (typeof d.vendor === 'string') { vendorEl.value = d.vendor; setStatus(vendorStatus, !!d.vendor); }
+        if (typeof d.product === 'string') { productEl.value = d.product; setStatus(productStatus, !!d.product); }
+        if (typeof d.version === 'string') { versionEl.value = d.version; setStatus(versionStatus, !!d.version); }
+      }
+    } catch (e) { console.warn('ls load cpe filters', e); }
+  }
+
   function openModal(cpe) {
     pendingCpeToVisualize = cpe;
     if (modal) { modal.hidden = false; modal.classList.add('open'); }
@@ -264,6 +294,7 @@
     pickedMap.delete(cpe);
     const btn = btnByCpe.get(cpe);
     if (btn) setBtnSelected(btn, false);
+    try { localStorage.setItem(LS_PICKED, JSON.stringify(Array.from(pickedSet))); } catch (e) { console.warn('ls save picked', e); }
   }
 
   function addPicked(cpe) {
@@ -290,6 +321,7 @@
     li.appendChild(actions);
     picked.appendChild(li);
     pickedMap.set(cpe, li);
+    try { localStorage.setItem(LS_PICKED, JSON.stringify(Array.from(pickedSet))); } catch (e) { console.warn('ls save picked', e); }
   }
 
   form.addEventListener('submit', async (e) => {
@@ -302,6 +334,8 @@
     if (vendor) params.append('vendor', vendor);
     if (product) params.append('product', product);
     if (version) params.append('version', version);
+    try { localStorage.setItem(LS_LAST_QUERY, JSON.stringify({ part, vendor, product, version })); } catch (e2) { console.warn('ls save lastQuery', e2); }
+    saveFilters();
     try {
       const data = await fetchJSON(`/api/cpe/search?${params.toString()}`);
       renderResults(data.items);
@@ -324,7 +358,7 @@
     }
   });
 
-  // Сброс формы
+  // Сбросы
   if (resetBtn) {
     resetBtn.addEventListener('click', () => {
       partEl.value = '';
@@ -337,6 +371,49 @@
       pickedMap.clear();
       if (btnByCpe) btnByCpe.clear();
       partEl.focus();
+      try { localStorage.removeItem(LS_FILTERS); } catch (e) { console.warn('ls clear filters', e); }
+      try { localStorage.removeItem(LS_PICKED); } catch (e) { console.warn('ls clear picked', e); }
+      try { localStorage.removeItem(LS_LAST_QUERY); } catch (e) { console.warn('ls clear lastQuery', e); }
     });
   }
+
+  if (resetFiltersBtn) {
+    resetFiltersBtn.addEventListener('click', () => {
+      partEl.value = '';
+      setStatus(partStatus, false);
+      vendorEl.value=''; productEl.value=''; versionEl.value='';
+      setStatus(vendorStatus, false); setStatus(productStatus, false); setStatus(versionStatus, false);
+      vendorSug.innerHTML=''; productSug.innerHTML=''; versionSug.innerHTML='';
+      try { localStorage.removeItem(LS_FILTERS); } catch (e) { console.warn('ls clear filters', e); }
+      partEl.focus();
+    });
+  }
+
+  // Автовосстановление
+  loadFilters();
+  try {
+    const raw = localStorage.getItem(LS_PICKED);
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) arr.forEach(cpe => addPicked(cpe));
+    }
+  } catch (e) { console.warn('ls load picked', e); }
+
+  try {
+    const qraw = localStorage.getItem(LS_LAST_QUERY);
+    const q = qraw ? JSON.parse(qraw) : null;
+    if (q && q.part) {
+      const p = new URLSearchParams({ part: q.part });
+      if (q.vendor) p.append('vendor', q.vendor);
+      if (q.product) p.append('product', q.product);
+      if (q.version) p.append('version', q.version);
+      fetchJSON(`/api/cpe/search?${p.toString()}`).then(d => renderResults(d.items)).catch(() => {});
+    }
+  } catch (e) { console.warn('ls load lastQuery', e); }
+
+  // Сохранение фильтров по вводу
+  partEl.addEventListener('change', saveFilters);
+  vendorEl.addEventListener('input', debounce(saveFilters, 150));
+  productEl.addEventListener('input', debounce(saveFilters, 150));
+  versionEl.addEventListener('input', debounce(saveFilters, 150));
 })();

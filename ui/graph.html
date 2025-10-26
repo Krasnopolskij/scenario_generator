@@ -26,8 +26,10 @@
           <option value="full" selected>Полный (CVE→CWE→CAPEC→Technique)</option>
           <option value="simple">Только CVE→CPE</option>
         </select>
-        
-        <button id="draw-btn" type="submit">Построить</button>
+        <div class="actions">
+          <button id="draw-btn" type="submit">Построить</button>
+          <button id="clear-graph" type="button" title="Очистить граф и форму">Очистить</button>
+        </div>
       </form>
       <p class="hint">Для большого графа используйте режим "Только CVE→CPE".</p>
     </section>
