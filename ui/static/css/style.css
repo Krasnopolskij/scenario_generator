@@ -94,10 +94,10 @@ button.selected { background: var(--ok); }
 
 /* Настройки только для страницы "Сбор данных" */
 .page-data .controls, .page-data .output { min-height: unset !important; height: auto !important; }
-.page-data .console { height: 60vh; }
+.page-data .console { height: 72vh; }
 
 /* Высота блоков и сетка только на странице CPE */
-.page-cpe .controls, .page-cpe .output { min-height: 80vh; }
+.page-cpe .controls, .page-cpe .output { min-height: 81vh; }
 
 .page-cpe .output { display: grid; grid-template-rows: auto minmax(0,1fr) auto minmax(0,1fr); gap: 10px; height: 80vh; }
 /* Списки заполняют свои грид-строки и прокручиваются внутри */
