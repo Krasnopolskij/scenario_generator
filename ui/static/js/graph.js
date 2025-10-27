@@ -7,6 +7,8 @@
   const clearBtn = document.getElementById('clear-graph');
   const scModeSel = document.getElementById('sc-mode');
   const scMaxPerTacticInput = document.getElementById('sc-max-per-tactic');
+  const viewModeSel = document.getElementById('view-mode');
+  const showAllCves = document.getElementById('show-all-cves');
   const genScenariosBtn = document.getElementById('gen-scenarios');
   const clearScenariosBtn = document.getElementById('clear-scenarios');
   const scenariosList = document.getElementById('scenarios-list');
@@ -58,7 +60,8 @@
       const mode = (scModeSel && scModeSel.value) || 'strict';
       let maxPer = 2;
       try { maxPer = Math.max(1, Math.min(10, parseInt(scMaxPerTacticInput.value || '2'))); } catch {}
-      localStorage.setItem(LS_SC_FORM, JSON.stringify({ mode, max_per_tactic: maxPer }));
+      const view_mode = (viewModeSel && viewModeSel.value) || 'linear';
+      localStorage.setItem(LS_SC_FORM, JSON.stringify({ mode, max_per_tactic: maxPer, view_mode }));
     } catch (e) { console.warn('ls save sc form', e); }
   }
 
@@ -75,8 +78,16 @@
           v = Math.max(1, Math.min(10, v));
           scMaxPerTacticInput.value = String(v);
         }
+        if (viewModeSel && typeof d.view_mode === 'string') viewModeSel.value = (d.view_mode === 'primary') ? 'primary' : 'linear';
       }
     } catch (e) { console.warn('ls load sc form', e); }
+  }
+
+  function applyViewModeAvailability() {
+    const vm = (viewModeSel && viewModeSel.value) || 'linear';
+    const disable = vm === 'primary';
+    if (scMaxPerTacticInput) scMaxPerTacticInput.disabled = disable;
+    if (showAllCves) showAllCves.disabled = (vm !== 'primary');
   }
 
   function restoreSnapshotIfAny() {
@@ -225,6 +236,7 @@
       case 'CAPEC_TO_TECHNIQUE': return '#27ae60';
       case 'SC_STEP': return '#7f8c8d';
       case 'SC_TECH_TO_CVE': return '#8e44ad';
+      case 'SC_GROUP': return '#7f8c8d';
       default: return '#7f8c8d';
     }
   }
@@ -305,6 +317,7 @@
     const cpe = (cpeInput.value || '').trim();
     if (!cpe) { alert('Сначала укажите cpe23Uri и постройте граф'); return; }
     const mode = (scModeSel && scModeSel.value) || 'strict';
+    const viewMode = (viewModeSel && viewModeSel.value) || 'linear';
     let maxPer = 3;
     try { maxPer = Math.max(1, Math.min(10, parseInt(scMaxPerTacticInput.value || '3'))); } catch {}
     const qs = new URLSearchParams({ cpe, mode, max_per_tactic: String(maxPer) });
@@ -318,7 +331,11 @@
       scenariosList.innerHTML = `<div class="warn">Ошибка загрузки сценариев: ${e}</div>`;
       return;
     }
-    renderScenarios(data);
+    if (viewMode === 'primary') {
+      renderPrimaryCard(data);
+    } else {
+      renderScenarios(data);
+    }
   }
 
   function renderScenarios(data) {
@@ -326,7 +343,7 @@
     const frag = document.createDocumentFragment();
     const meta = document.createElement('div');
     meta.className = 'sc-meta';
-    modeName = data.mode === 'relaxed' ? 'нестрогий' : 'строгий';
+    const modeName = data.mode === 'relaxed' ? 'нестрогий' : 'строгий';
     meta.textContent = `Сценариев: ${data.scenarios.length} (режим: ${modeName}, техник на тактику: ${data.max_per_tactic})`;
     frag.appendChild(meta);
 
@@ -718,6 +735,7 @@
   restoreForm();
   restoreSnapshotIfAny();
   restoreScForm();
+  applyViewModeAvailability();
 
   if (genScenariosBtn) {
     genScenariosBtn.addEventListener('click', generateScenarios);
@@ -738,6 +756,171 @@
   }
   if (scModeSel) scModeSel.addEventListener('change', saveScForm);
   if (scMaxPerTacticInput) scMaxPerTacticInput.addEventListener('input', debounce(saveScForm, 200));
+  if (viewModeSel) viewModeSel.addEventListener('change', () => { applyViewModeAvailability(); saveScForm(); });
+  if (showAllCves) showAllCves.addEventListener('change', () => {
+    if (isScenarioView && currentScenarioId === 'PRIMARY') {
+      if (showAllCves.checked) showPrimaryAllCVEs();
+      else { cy.elements("edge[type='SC_TECH_TO_CVE']").remove(); cy.elements("node[group='CVE']").remove(); }
+    }
+  });
+
+  // ===== Первичный сценарий (primary) — визуализация групп тактик =====
+  function renderPrimaryCard(data) {
+    const frag = document.createDocumentFragment();
+    const box = document.createElement('div'); box.className = 'scenario primary';
+    const head = document.createElement('div'); head.className = 'scenario-head';
+    const title = document.createElement('div'); title.className = 'scenario-title'; title.textContent = 'Первичный сценарий';
+    const act = document.createElement('div'); act.className = 'scenario-actions';
+    const btnShow = document.createElement('button'); btnShow.textContent = 'Отобразить';
+    // фиксированная ширина, чтобы текст не менял размер
+    try { btnShow.style.width = '220px'; } catch {}
+    const mega = Array.isArray(data.mega) ? data.mega : [];
+    buildPrimaryStepIndex(mega);
+    const setBtn = (sel) => { btnShow.textContent = sel ? 'Назад к графу' : 'Отобразить'; btnShow.classList.toggle('selected', !!sel); };
+    btnShow.addEventListener('click', () => {
+      if (!isScenarioView) {
+        trySaveSnapshot();
+        renderPrimaryOnCanvas(mega);
+        setBtn(true);
+        isScenarioView = true;
+        currentScenarioId = 'PRIMARY';
+      } else {
+        const ok = restoreSnapshotFromLS();
+        if (ok) { setBtn(false); isScenarioView = false; currentScenarioId = null; }
+      }
+    });
+    act.appendChild(btnShow);
+    head.appendChild(title); head.appendChild(act);
+    box.appendChild(head);
+    frag.appendChild(box);
+    scenariosList.innerHTML = ''; scenariosList.appendChild(frag);
+
+    // Если уже открыт первичный сценарий и пользователь заново сгенерировал — не возвращаемся к графу, а перерисовываем
+    if (isScenarioView && currentScenarioId === 'PRIMARY') {
+      setBtn(true);
+      renderPrimaryOnCanvas(mega);
+    } else {
+      setBtn(false);
+    }
+  }
+
+  let primaryStepByTechId = new Map();
+  function buildPrimaryStepIndex(mega) {
+    primaryStepByTechId = new Map();
+    for (const col of mega || []) {
+      for (const st of (col.techniques || [])) { const t = st.technique; if (t && t.id) primaryStepByTechId.set(String(t.id), st); }
+    }
+  }
+
+  function renderPrimaryOnCanvas(mega) {
+    if (!window.cytoscape) return;
+    const elements = buildPrimaryElements(mega);
+    if (cy) { cy.destroy(); cy = null; }
+    cy = cytoscape({
+      container,
+      elements,
+      style: [
+        { selector: 'node', style: {
+          'label': 'data(label)','color':'#e5e7ef','font-size':12,'text-valign':'center','text-halign':'center','text-wrap':'none',
+          'background-color': ele => colorByGroup(ele.data('group')),'shape':'ellipse','border-width':1,'border-color':'#2a3052','width':46,'height':46,'padding':0 }},
+        { selector: 'node[group="TacticGroup"]', style: {
+          'shape':'round-rectangle','background-color':'#141939','background-opacity':0.22,'label':'data(label)',
+          'text-valign':'top','text-halign':'center','border-color':'#3b4775','border-width':1,'padding':14 }},
+        { selector: 'node.sel', style: { 'border-width':3,'border-color':'#4f8cff','z-index':999 }},
+        { selector: 'node.neigh', style: { 'border-width':2,'border-color':'#3b4775' }},
+        { selector: 'edge', style: { 'curve-style':'bezier','target-arrow-shape':'none','line-color': ele => edgeColor(ele.data('type')),'width':1.2,'opacity':0.85 }},
+        { selector: 'edge[type="SC_GROUP"]', style: { 'target-arrow-shape': 'triangle', 'target-arrow-color': '#7f8c8d' }},
+      ],
+      layout: { name: 'preset', fit: true, padding: 20 }
+    });
+    cy.on('tap', 'node', (evt) => {
+      const ele = evt.target;
+      const grp = ele.data('group');
+      if (grp === 'TacticGroup') {
+        if (showAllCves && showAllCves.checked) {
+          showPrimaryAllCVEs();
+        } else {
+          showPrimaryGroupDetails(ele);
+        }
+      }
+      cy.elements().removeClass('sel neigh'); ele.addClass('sel'); ele.closedNeighborhood().difference(ele).addClass('neigh'); renderInspector(ele);
+    });
+    cy.on('tap', (evt) => { if (evt.target === cy) { cy.elements().removeClass('sel neigh'); renderInspector(null); } });
+
+    // При включённом флаге — сразу показать все CVE
+    if (showAllCves && showAllCves.checked) {
+      showPrimaryAllCVEs();
+    }
+  }
+
+  function buildPrimaryElements(mega) {
+    const COL_GAP=120, ROW_GAP=70, TOP_Y=80; const elements=[]; const cols=(mega||[]).slice().sort((a,b)=>(a.tactic_order||0)-(b.tactic_order||0));
+    const groupIds=[];
+    for (let ci=0; ci<cols.length; ci++) {
+      const col = cols[ci]; const gid = `tg_${ci}`; groupIds.push(gid);
+      elements.push({ data: { id: gid, label: String(col.tactic||''), group:'TacticGroup' }, position: { x: ci*COL_GAP, y: TOP_Y } });
+      const items = col.techniques || [];
+      for (let ri=0; ri<items.length; ri++) { const st=items[ri]; const t=st.technique; if (!t||!t.id) continue; const x=ci*COL_GAP; const y=TOP_Y+ri*ROW_GAP; elements.push({ data: { id:String(t.id), label:'Tech', group:'Technique', raw:t, parent: gid }, position:{x,y} }); }
+    }
+    // Простые связи между соседними группами
+    for (let i=0; i<groupIds.length-1; i++) { const s=groupIds[i], t=groupIds[i+1]; const eid=`sc_group_${i}_${i+1}`; elements.push({ data: { id:eid, source:s, target:t, type:'SC_GROUP' } }); }
+    return elements;
+  }
+
+  function showPrimaryGroupDetails(groupEle) {
+    // Удаляем прежние CVE узлы и связи к ним
+    cy.elements("edge[type='SC_TECH_TO_CVE']").remove();
+    cy.nodes("[group = 'CVE']").remove();
+    addCVEsForGroup(groupEle, false);
+  }
+
+  function addCVEsForGroup(groupEle, dontClear) {
+    const kids = groupEle.children();
+    const bb = groupEle.boundingBox(); const centerX = (bb.x1+bb.x2)/2; const baseY = bb.y2 + 80; const CVE_GAP_Y=38, SPREAD_X=28;
+    // Собираем CVE с привязкой к минимальному ряду техники, чтобы сверху шли CVE от верхних техник
+    const items = [];
+    kids.forEach(k => {
+      const tid = String(k.id());
+      const st = primaryStepByTechId.get(tid); if (!st) return; const cves = Array.isArray(st.cves)?st.cves:[];
+      const row = Math.round((k.position('y') - bb.y1) / 70); // приблизительный ряд
+      for (const cv of cves) { if (!cv || !cv.id) continue; items.push({ cv, tid, row }); }
+    });
+    // Сортировка CVE по верхним связанным техникам
+    items.sort((a,b)=> a.row - b.row);
+    const placed = new Set(); let idx=0;
+    for (const it of items) {
+      const cid = String(it.cv.id); const tid = it.tid;
+      if (!placed.has(cid)) {
+        const x = centerX + (idx - Math.floor(items.length/2))*SPREAD_X; const y = baseY + idx*CVE_GAP_Y;
+        // Узел CVE может уже существовать (если он встречался в другой группе).
+        // В этом случае не добавляем его повторно, чтобы не получить ошибку дубликата id.
+        if (cy.getElementById(cid).length === 0) {
+          try {
+            cy.add({ group:'nodes', data:{ id: cid, label:'CVE', group:'CVE', raw: it.cv }, position:{ x, y } });
+          } catch (e) {
+            // На всякий случай игнорируем возможные гонки/дубликаты
+          }
+        }
+        placed.add(cid); idx++;
+      }
+      const eid = `pg_tc_${tid}_${cid}`;
+      if (cy.getElementById(eid).length === 0) {
+        try {
+          cy.add({ group:'edges', data:{ id: eid, source: tid, target: cid, type: 'SC_TECH_TO_CVE' } });
+        } catch (e) {
+          // безопасно игнорируем повторные добавления
+        }
+      }
+    }
+  }
+
+  function showPrimaryAllCVEs() {
+    // Полностью перестраиваем CVE-слой
+    cy.elements("edge[type='SC_TECH_TO_CVE']").remove();
+    cy.elements("node[group='CVE']").remove();
+    const groups = cy.nodes("[group = 'TacticGroup']");
+    groups.forEach(g => addCVEsForGroup(g, true));
+  }
 
   if (clearBtn) {
     clearBtn.addEventListener('click', () => {

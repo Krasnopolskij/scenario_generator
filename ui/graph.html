@@ -21,7 +21,7 @@
     <section class="controls">
       <h2>Построение связей CPE</h2>
       <form id="graph-form" class="form-inline">
-        <label for="cpe">cpe23Uri:</label>
+        <label for="cpe">URI объекта защиты:</label>
         <input id="cpe" name="cpe" type="text" placeholder="например, cpe:2.3:a:linkace:linkace:*:*:*:*:*:*:*:*" />
         <select id="mode" name="mode">
           <option value="full" selected>Полный (CVE→CWE→CAPEC→Technique)</option>
@@ -37,11 +37,23 @@
       <h2>Генерация сценариев</h2>
       <div class="scenarios-ctrl">
         <div class="field">
-          <label for="sc-mode">Режим:</label>
+          <label for="sc-mode">Режим генерации:</label>
           <select id="sc-mode">
             <option value="strict" selected>Строгий</option>
             <option value="relaxed">Нестрогий</option>
           </select>
+        </div>
+        <div class="field">
+          <label for="view-mode">Режим отображения:</label>
+          <select id="view-mode">
+            <option value="linear" selected>Линейные сценарии</option>
+            <option value="primary">Первичный сценарий</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="show-all-cves">
+            <input type="checkbox" id="show-all-cves" /> Отобразить все связанные CVE
+          </label>
         </div>
         <div class="field">
           <label for="sc-max-per-tactic">Максимум техник на тактику:</label>
@@ -75,6 +87,6 @@
 
   <!-- Локальная библиотека Cytoscape -->
   <script src="/static/js/vendor/cytoscape.js-3.33.1/dist/cytoscape.min.js"></script>
-  <script src="/static/js/graph.js?v=20251009"></script>
+  <script src="/static/js/graph.js?v=20251027-1"></script>
 </body>
 </html>
