@@ -12,16 +12,174 @@
   const genScenariosBtn = document.getElementById('gen-scenarios');
   const clearScenariosBtn = document.getElementById('clear-scenarios');
   const scenariosList = document.getElementById('scenarios-list');
+  // Theme controls
+  const themeBtn = document.getElementById('open-theme');
+  const themeBackdrop = document.getElementById('theme-backdrop');
+  const themeCanvasInput = document.getElementById('theme-canvas');
+  const themeLabelInput = document.getElementById('theme-label');
+  const themeNodeInputs = {
+    CPE: document.getElementById('theme-node-cpe'),
+    CVE: document.getElementById('theme-node-cve'),
+    CWE: document.getElementById('theme-node-cwe'),
+    CAPEC: document.getElementById('theme-node-capec'),
+    Technique: document.getElementById('theme-node-tech'),
+  };
+  const themeEdgeInputs = {
+    AFFECTS: document.getElementById('theme-edge-AFFECTS'),
+    CWE_TO_CVE: document.getElementById('theme-edge-CWE_TO_CVE'),
+    CAPEC_TO_CWE: document.getElementById('theme-edge-CAPEC_TO_CWE'),
+    CAPEC_PARENT_TO_CAPEC_CHILD: document.getElementById('theme-edge-CAPEC_PARENT_TO_CAPEC_CHILD'),
+    CAPEC_TO_TECHNIQUE: document.getElementById('theme-edge-CAPEC_TO_TECHNIQUE'),
+    SC_STEP: document.getElementById('theme-edge-SC_STEP'),
+    SC_TECH_TO_CVE: document.getElementById('theme-edge-SC_TECH_TO_CVE'),
+    SC_GROUP: document.getElementById('theme-edge-SC_GROUP'),
+  };
+  const themeResetBtn = document.getElementById('theme-reset');
+  const themeCancelBtn = document.getElementById('theme-cancel');
+  const themeApplyBtn = document.getElementById('theme-apply');
   const LS_FORM = 'sg:graph:form';
   const LS_SNAP = 'sg:graph:snapshot';
   const LS_SCEN = 'sg:graph:scenarios';
   const LS_SC_FORM = 'sg:graph:scform';
+  const LS_THEME = 'sg:graph:theme';
   const SNAP_LIMIT = 2 * 1024 * 1024; // 2MB
 
   let cy = null;
   let isScenarioView = false;
   let currentScenarioId = null;
   const scenarioShowBtns = new Map();
+
+  // ===== Theme handling =====
+  function loadTheme() {
+    try { const raw = localStorage.getItem(LS_THEME); if (!raw) return null; const t = JSON.parse(raw); if (t && typeof t === 'object') return t; } catch {}
+    return null;
+  }
+  function saveTheme(theme) {
+    try {
+      if (theme && (theme.nodeColors || theme.canvas || theme.labels || theme.edgeColors)) localStorage.setItem(LS_THEME, JSON.stringify(theme));
+      else localStorage.removeItem(LS_THEME);
+    } catch {}
+  }
+  function applyTheme(theme, opts={ save:false }) {
+    // Canvas background
+    if (container) {
+      if (theme && theme.canvas) container.style.background = theme.canvas; else container.style.background = '';
+    }
+    if (cy) {
+      const nodes = cy.nodes();
+      // Label color
+      const labelColor = theme && theme.labels ? String(theme.labels) : null;
+      if (labelColor) {
+        nodes.forEach(n => { n.style('color', labelColor); });
+      } else {
+        nodes.forEach(n => { n.removeStyle('color'); });
+      }
+      // Per-group node colors
+      const colors = (theme && theme.nodeColors) || {};
+      nodes.forEach(n => {
+        const g = n.data('group');
+        if (g === 'TechLabel') return;
+        const val = colors[g];
+        if (val) n.style('background-color', val);
+        else n.removeStyle('background-color');
+      });
+
+      // Edge colors by type
+      const ecolors = (theme && theme.edgeColors) || {};
+      const edges = cy.edges();
+      edges.forEach(e => {
+        const t = e.data('type');
+        const c = ecolors[t];
+        if (c) {
+          e.style('line-color', c);
+          e.style('target-arrow-color', c);
+          e.style('source-arrow-color', c);
+        } else {
+          e.removeStyle('line-color');
+          e.removeStyle('target-arrow-color');
+          e.removeStyle('source-arrow-color');
+        }
+      });
+    }
+    if (opts.save) saveTheme(theme);
+  }
+  function openThemeModal() {
+    const saved = loadTheme() || {};
+    try { if (themeCanvasInput) themeCanvasInput.value = (saved.canvas || '#0f1326'); } catch {}
+    try { if (themeLabelInput) themeLabelInput.value = (saved.labels || '#e5e7ef'); } catch {}
+    const cols = (saved.nodeColors || {});
+    try { if (themeNodeInputs.CPE) themeNodeInputs.CPE.value = cols.CPE || colorByGroup('CPE'); } catch {}
+    try { if (themeNodeInputs.CVE) themeNodeInputs.CVE.value = cols.CVE || colorByGroup('CVE'); } catch {}
+    try { if (themeNodeInputs.CWE) themeNodeInputs.CWE.value = cols.CWE || colorByGroup('CWE'); } catch {}
+    try { if (themeNodeInputs.CAPEC) themeNodeInputs.CAPEC.value = cols.CAPEC || colorByGroup('CAPEC'); } catch {}
+    try { if (themeNodeInputs.Technique) themeNodeInputs.Technique.value = cols.Technique || colorByGroup('Technique'); } catch {}
+    const ecols = (saved.edgeColors || {});
+    try { if (themeEdgeInputs.AFFECTS) themeEdgeInputs.AFFECTS.value = ecols.AFFECTS || edgeColor('AFFECTS'); } catch {}
+    try { if (themeEdgeInputs.CWE_TO_CVE) themeEdgeInputs.CWE_TO_CVE.value = ecols.CWE_TO_CVE || edgeColor('CWE_TO_CVE'); } catch {}
+    try { if (themeEdgeInputs.CAPEC_TO_CWE) themeEdgeInputs.CAPEC_TO_CWE.value = ecols.CAPEC_TO_CWE || edgeColor('CAPEC_TO_CWE'); } catch {}
+    try { if (themeEdgeInputs.CAPEC_PARENT_TO_CAPEC_CHILD) themeEdgeInputs.CAPEC_PARENT_TO_CAPEC_CHILD.value = ecols.CAPEC_PARENT_TO_CAPEC_CHILD || edgeColor('CAPEC_PARENT_TO_CAPEC_CHILD'); } catch {}
+    try { if (themeEdgeInputs.CAPEC_TO_TECHNIQUE) themeEdgeInputs.CAPEC_TO_TECHNIQUE.value = ecols.CAPEC_TO_TECHNIQUE || edgeColor('CAPEC_TO_TECHNIQUE'); } catch {}
+    try { if (themeEdgeInputs.SC_STEP) themeEdgeInputs.SC_STEP.value = ecols.SC_STEP || edgeColor('SC_STEP'); } catch {}
+    try { if (themeEdgeInputs.SC_TECH_TO_CVE) themeEdgeInputs.SC_TECH_TO_CVE.value = ecols.SC_TECH_TO_CVE || edgeColor('SC_TECH_TO_CVE'); } catch {}
+    try { if (themeEdgeInputs.SC_GROUP) themeEdgeInputs.SC_GROUP.value = ecols.SC_GROUP || edgeColor('SC_GROUP'); } catch {}
+    try { themeBackdrop.removeAttribute('hidden'); themeBackdrop.classList.add('open'); } catch {}
+  }
+  function closeThemeModal() {
+    try { themeBackdrop.classList.remove('open'); themeBackdrop.setAttribute('hidden',''); } catch {}
+    const t = loadTheme();
+    applyTheme(t || {}, { save:false });
+  }
+  function bindThemeUI() {
+    if (themeBtn && themeBackdrop) themeBtn.addEventListener('click', openThemeModal);
+    if (themeCancelBtn) themeCancelBtn.addEventListener('click', closeThemeModal);
+    if (themeResetBtn) themeResetBtn.addEventListener('click', () => { saveTheme(null); applyTheme({}, { save:false }); closeThemeModal(); });
+    if (themeApplyBtn) themeApplyBtn.addEventListener('click', () => {
+      const nodeColors = {
+        CPE: themeNodeInputs.CPE?.value,
+        CVE: themeNodeInputs.CVE?.value,
+        CWE: themeNodeInputs.CWE?.value,
+        CAPEC: themeNodeInputs.CAPEC?.value,
+        Technique: themeNodeInputs.Technique?.value,
+      };
+      const edgeColors = {
+        AFFECTS: themeEdgeInputs.AFFECTS?.value,
+        CWE_TO_CVE: themeEdgeInputs.CWE_TO_CVE?.value,
+        CAPEC_TO_CWE: themeEdgeInputs.CAPEC_TO_CWE?.value,
+        CAPEC_PARENT_TO_CAPEC_CHILD: themeEdgeInputs.CAPEC_PARENT_TO_CAPEC_CHILD?.value,
+        CAPEC_TO_TECHNIQUE: themeEdgeInputs.CAPEC_TO_TECHNIQUE?.value,
+        SC_STEP: themeEdgeInputs.SC_STEP?.value,
+        SC_TECH_TO_CVE: themeEdgeInputs.SC_TECH_TO_CVE?.value,
+        SC_GROUP: themeEdgeInputs.SC_GROUP?.value,
+      };
+      const theme = { canvas: themeCanvasInput?.value, labels: themeLabelInput?.value, nodeColors, edgeColors };
+      applyTheme(theme, { save:true }); closeThemeModal();
+    });
+    const preview = () => {
+      const nodeColors = {
+        CPE: themeNodeInputs.CPE?.value,
+        CVE: themeNodeInputs.CVE?.value,
+        CWE: themeNodeInputs.CWE?.value,
+        CAPEC: themeNodeInputs.CAPEC?.value,
+        Technique: themeNodeInputs.Technique?.value,
+      };
+      const edgeColors = {
+        AFFECTS: themeEdgeInputs.AFFECTS?.value,
+        CWE_TO_CVE: themeEdgeInputs.CWE_TO_CVE?.value,
+        CAPEC_TO_CWE: themeEdgeInputs.CAPEC_TO_CWE?.value,
+        CAPEC_PARENT_TO_CAPEC_CHILD: themeEdgeInputs.CAPEC_PARENT_TO_CAPEC_CHILD?.value,
+        CAPEC_TO_TECHNIQUE: themeEdgeInputs.CAPEC_TO_TECHNIQUE?.value,
+        SC_STEP: themeEdgeInputs.SC_STEP?.value,
+        SC_TECH_TO_CVE: themeEdgeInputs.SC_TECH_TO_CVE?.value,
+        SC_GROUP: themeEdgeInputs.SC_GROUP?.value,
+      };
+      const theme = { canvas: themeCanvasInput?.value, labels: themeLabelInput?.value, nodeColors, edgeColors };
+      applyTheme(theme, { save:false });
+    };
+    if (themeCanvasInput) themeCanvasInput.addEventListener('input', preview);
+    if (themeLabelInput) themeLabelInput.addEventListener('input', preview);
+    Object.values(themeNodeInputs).forEach(inp => { if (inp) inp.addEventListener('input', preview); });
+    Object.values(themeEdgeInputs).forEach(inp => { if (inp) inp.addEventListener('input', preview); });
+  }
 
   // === Tooltip for node hover ===
   let tooltipEl = null;
@@ -218,6 +376,7 @@
       });
       cy.on('tap', (evt) => { if (evt.target === cy) { cy.elements().removeClass('sel neigh'); renderInspector(null); } });
       bindTooltipEvents();
+      const th1 = loadTheme(); if (th1) applyTheme(th1);
       cy.on('free zoom pan', saveSnapshotDebounced);
       return true;
     } catch (e) { console.warn('ls load graph snapshot', e); return false; }
@@ -283,6 +442,7 @@
       // Повторно включаем автоснапшот только для обычного графа
       cy.on('free zoom pan', saveSnapshotDebounced);
       bindTooltipEvents();
+      const th2 = loadTheme(); if (th2) applyTheme(th2);
       isScenarioView = false;
       return true;
     } catch (e) { console.warn('restoreSnapshotFromLS', e); return false; }
@@ -588,6 +748,7 @@
     cy.on('tap', (evt) => { if (evt.target === cy) { cy.elements().removeClass('sel neigh'); renderInspector(null); } });
     bindTooltipEvents();
     // В режиме сценария снимок не сохраняем, чтобы не перетирать исходный граф в LS
+    const th3 = loadTheme(); if (th3) applyTheme(th3);
   }
 
   function buildScenarioElements(sc) {
@@ -807,6 +968,7 @@
     bindTooltipEvents();
     cy.on('free zoom pan', saveSnapshotDebounced);
     trySaveSnapshot();
+    const th4 = loadTheme(); if (th4) applyTheme(th4);
   }
 
   form.addEventListener('submit', (e) => {
@@ -827,6 +989,9 @@
   restoreSnapshotIfAny();
   restoreScForm();
   applyViewModeAvailability();
+  // Theme UI and initial apply
+  bindThemeUI();
+  const initTheme = loadTheme(); if (initTheme) applyTheme(initTheme);
 
   if (genScenariosBtn) {
     genScenariosBtn.addEventListener('click', generateScenarios);
@@ -852,6 +1017,7 @@
     if (isScenarioView && currentScenarioId === 'PRIMARY') {
       if (showAllCves.checked) showPrimaryAllCVEs();
       else { cy.elements("edge[type='SC_TECH_TO_CVE']").remove(); cy.elements("node[group='CVE']").remove(); }
+      const th = loadTheme(); if (th) applyTheme(th);
     }
   });
 
@@ -943,6 +1109,7 @@
     if (showAllCves && showAllCves.checked) {
       showPrimaryAllCVEs();
     }
+    const th5 = loadTheme(); if (th5) applyTheme(th5);
   }
 
   function buildPrimaryElements(mega) {
@@ -964,6 +1131,7 @@
     cy.elements("edge[type='SC_TECH_TO_CVE']").remove();
     cy.nodes("[group = 'CVE']").remove();
     addCVEsForGroup(groupEle, false);
+    const th = loadTheme(); if (th) applyTheme(th);
   }
 
   function addCVEsForGroup(groupEle, dontClear) {
@@ -1004,6 +1172,8 @@
         }
       }
     }
+    // Применяем тему к только что добавленным элементам
+    const th = loadTheme(); if (th) applyTheme(th);
   }
 
   function showPrimaryAllCVEs() {
@@ -1012,6 +1182,7 @@
     cy.elements("node[group='CVE']").remove();
     const groups = cy.nodes("[group = 'TacticGroup']");
     groups.forEach(g => addCVEsForGroup(g, true));
+    const th = loadTheme(); if (th) applyTheme(th);
   }
 
   if (clearBtn) {

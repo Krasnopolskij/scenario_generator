@@ -11,6 +11,7 @@
   <header>
     <h1>Визуализация связей CPE</h1>
     <nav class="nav">
+      <button id="open-theme" type="button" class="btn-secondary" title="Настройки отображения" aria-label="Настройки">⚙</button>
       <a href="/" class="nav-link">Сбор данных</a>
       <a href="/cpe" class="nav-link">Выбор CPE</a>
       <a href="/graph" class="nav-link active">Визуализация</a>
@@ -81,12 +82,89 @@
     </aside>
   </main>
 
+  <!-- Модальное окно настроек визуализации -->
+  <div id="theme-backdrop" class="modal-backdrop" hidden>
+    <div class="modal">
+      <div class="modal-title">Настройки визуализации</div>
+      <div class="modal-body">
+        <div class="theme-row">
+          <label>Цвет фона холста</label>
+          <input id="theme-canvas" type="color" value="#0f1326" />
+        </div>
+        <div class="theme-row">
+          <label>Цвет надписей (label)</label>
+          <input id="theme-label" type="color" value="#e5e7ef" />
+        </div>
+        <hr style="border:0;border-top:1px solid #1d2342;margin:10px 0">
+        <div class="theme-row">
+          <label>Цвет узлов CPE</label>
+          <input id="theme-node-cpe" type="color" value="#8e44ad" />
+        </div>
+        <div class="theme-row">
+          <label>Цвет узлов CVE</label>
+          <input id="theme-node-cve" type="color" value="#e74c3c" />
+        </div>
+        <div class="theme-row">
+          <label>Цвет узлов CWE</label>
+          <input id="theme-node-cwe" type="color" value="#e49659" />
+        </div>
+        <div class="theme-row">
+          <label>Цвет узлов CAPEC</label>
+          <input id="theme-node-capec" type="color" value="#3498db" />
+        </div>
+        <div class="theme-row">
+          <label>Цвет узлов Technique</label>
+          <input id="theme-node-tech" type="color" value="#4fca21" />
+        </div>
+        <hr style="border:0;border-top:1px solid #1d2342;margin:10px 0">
+        <div class="theme-row">
+          <label>Связь AFFECTS</label>
+          <input id="theme-edge-AFFECTS" type="color" value="#c0392b" />
+        </div>
+        <div class="theme-row">
+          <label>Связь CWE_TO_CVE</label>
+          <input id="theme-edge-CWE_TO_CVE" type="color" value="#d35400" />
+        </div>
+        <div class="theme-row">
+          <label>Связь CAPEC_TO_CWE</label>
+          <input id="theme-edge-CAPEC_TO_CWE" type="color" value="#2980b9" />
+        </div>
+        <div class="theme-row">
+          <label>Связь CAPEC_PARENT_TO_CAPEC_CHILD</label>
+          <input id="theme-edge-CAPEC_PARENT_TO_CAPEC_CHILD" type="color" value="#7f8c8d" />
+        </div>
+        <div class="theme-row">
+          <label>Связь CAPEC_TO_TECHNIQUE</label>
+          <input id="theme-edge-CAPEC_TO_TECHNIQUE" type="color" value="#27ae60" />
+        </div>
+        <div class="theme-row">
+          <label>Связь SC_STEP</label>
+          <input id="theme-edge-SC_STEP" type="color" value="#7f8c8d" />
+        </div>
+        <div class="theme-row">
+          <label>Связь SC_TECH_TO_CVE</label>
+          <input id="theme-edge-SC_TECH_TO_CVE" type="color" value="#8e44ad" />
+        </div>
+        <div class="theme-row">
+          <label>Связь SC_GROUP</label>
+          <input id="theme-edge-SC_GROUP" type="color" value="#7f8c8d" />
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="theme-reset" class="btn-secondary" title="Сбросить к стандартным цветам">Сбросить</button>
+        <span style="flex:1"></span>
+        <button id="theme-cancel" class="btn-secondary">Отмена</button>
+        <button id="theme-apply" class="btn-primary">Применить</button>
+      </div>
+    </div>
+  </div>
+
   <footer>
     <span></span>
   </footer>
 
   <!-- Локальная библиотека Cytoscape -->
   <script src="/static/js/vendor/cytoscape.js-3.33.1/dist/cytoscape.min.js"></script>
-  <script src="/static/js/graph.js?v=20251027-2"></script>
+  <script src="/static/js/graph.js?v=20251027-6"></script>
 </body>
 </html>

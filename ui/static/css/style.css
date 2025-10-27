@@ -300,3 +300,8 @@ button.selected { background: var(--ok); }
   white-space: nowrap;
   left: 0; top: 0;
 }
+
+/* Theme modal */
+.theme-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px; margin: 8px 0; }
+.theme-row label { color: var(--text); font-size: 14px; }
+.theme-row input[type="color"] { width: 48px; height: 28px; padding: 0; border: 1px solid #1d2342; border-radius: 6px; background: #0f1326; }
