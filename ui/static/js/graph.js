@@ -12,6 +12,10 @@
   const genScenariosBtn = document.getElementById('gen-scenarios');
   const clearScenariosBtn = document.getElementById('clear-scenarios');
   const scenariosList = document.getElementById('scenarios-list');
+  // Inspector collapse controls
+  const insp = document.querySelector('.page-graph .inspector');
+  const inspToggle = document.getElementById('insp-toggle');
+  const mainGrid = document.querySelector('.page-graph main');
   // Theme controls
   const themeBtn = document.getElementById('open-theme');
   const themeBackdrop = document.getElementById('theme-backdrop');
@@ -42,12 +46,32 @@
   const LS_SCEN = 'sg:graph:scenarios';
   const LS_SC_FORM = 'sg:graph:scform';
   const LS_THEME = 'sg:graph:theme';
+  const LS_INSP = 'sg:graph:inspCollapsed';
   const SNAP_LIMIT = 2 * 1024 * 1024; // 2MB
 
   let cy = null;
   let isScenarioView = false;
   let currentScenarioId = null;
   const scenarioShowBtns = new Map();
+
+  // ===== Inspector collapse handling =====
+  function setInspectorCollapsed(flag, save=true) {
+    try {
+      if (mainGrid) mainGrid.classList.toggle('insp-collapsed', !!flag);
+      if (insp) insp.classList.toggle('collapsed', !!flag);
+      if (save) { try { localStorage.setItem(LS_INSP, JSON.stringify(!!flag)); } catch {} }
+      // Let Cytoscape know container resized
+      if (cy && typeof cy.resize === 'function') setTimeout(() => { try { cy.resize(); } catch {} }, 0);
+    } catch {}
+  }
+  function initInspectorCollapse() {
+    try {
+      const raw = localStorage.getItem(LS_INSP);
+      const v = raw ? JSON.parse(raw) : false;
+      setInspectorCollapsed(!!v, false);
+    } catch {}
+    if (inspToggle) inspToggle.addEventListener('click', () => setInspectorCollapsed(!(insp && insp.classList.contains('collapsed'))));
+  }
 
   // ===== Theme handling =====
   function loadTheme() {
@@ -989,6 +1013,7 @@
   restoreSnapshotIfAny();
   restoreScForm();
   applyViewModeAvailability();
+  initInspectorCollapse();
   // Theme UI and initial apply
   bindThemeUI();
   const initTheme = loadTheme(); if (initTheme) applyTheme(initTheme);
