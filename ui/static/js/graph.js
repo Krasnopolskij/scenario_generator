@@ -23,6 +23,76 @@
   let currentScenarioId = null;
   const scenarioShowBtns = new Map();
 
+  // === Tooltip for node hover ===
+  let tooltipEl = null;
+  let lastMouse = { x: 0, y: 0 };
+  function ensureTooltip() {
+    if (tooltipEl) return tooltipEl;
+    tooltipEl = document.createElement('div');
+    tooltipEl.id = 'graph-tooltip';
+    tooltipEl.style.position = 'fixed';
+    tooltipEl.style.zIndex = '10000';
+    tooltipEl.style.pointerEvents = 'none';
+    tooltipEl.style.visibility = 'hidden';
+    tooltipEl.style.transform = 'translate(-9999px, -9999px)';
+    document.body.appendChild(tooltipEl);
+    if (container) {
+      container.addEventListener('mousemove', (e) => { lastMouse.x = e.clientX; lastMouse.y = e.clientY; }, { passive: true });
+      container.addEventListener('mouseleave', () => hideTooltip());
+    }
+    return tooltipEl;
+  }
+  function showTooltip(text, xOverride, yOverride) {
+    const el = ensureTooltip();
+    if (!text) { hideTooltip(); return; }
+    el.textContent = String(text);
+    el.style.visibility = 'visible';
+    const x = (typeof xOverride === 'number') ? xOverride : (lastMouse.x + 12);
+    const y = (typeof yOverride === 'number') ? yOverride : (lastMouse.y + 12);
+    el.style.transform = `translate(${x}px, ${y}px)`;
+  }
+  function hideTooltip() {
+    if (!tooltipEl) return;
+    tooltipEl.style.visibility = 'hidden';
+    tooltipEl.style.transform = 'translate(-9999px, -9999px)';
+  }
+  function hoverTextForEle(ele) {
+    try {
+      const group = ele.data('group') || '';
+      const raw = ele.data('raw') || {};
+      const props = raw.props || {};
+      if (group === 'CVE') return props.identifier || ele.data('label') || '';
+      if (group === 'CPE') return props.product || props.title || props.cpe23Uri || ele.data('label') || '';
+      if (group === 'TacticGroup') return ele.data('label') || '';
+      return props.name || ele.data('label') || '';
+    } catch { return ''; }
+  }
+  function bindTooltipEvents() {
+    if (!cy) return;
+    cy.off('mouseover');
+    cy.off('mouseout');
+    cy.off('mousemove');
+    cy.on('mouseover', 'node', (evt) => {
+      const txt = hoverTextForEle(evt.target);
+      const rp = (evt.target && evt.target.renderedPosition) ? evt.target.renderedPosition() : null;
+      let x, y; try { const rect = container.getBoundingClientRect(); if (rp) { x = rect.left + rp.x + 12; y = rect.top + rp.y + 12; } } catch {}
+      if (txt) showTooltip(txt, x, y); else hideTooltip();
+    });
+    cy.on('mousemove', 'node', (evt) => {
+      try {
+        const oe = evt.originalEvent;
+        if (oe && typeof oe.clientX === 'number' && typeof oe.clientY === 'number') {
+          lastMouse.x = oe.clientX; lastMouse.y = oe.clientY;
+        }
+      } catch {}
+      const txt = hoverTextForEle(evt.target);
+      const rp = (evt.target && evt.target.renderedPosition) ? evt.target.renderedPosition() : null;
+      let x, y; try { const rect = container.getBoundingClientRect(); if (rp) { x = rect.left + rp.x + 12; y = rect.top + rp.y + 12; } } catch {}
+      if (txt) showTooltip(txt, x, y); else hideTooltip();
+    });
+    cy.on('mouseout', 'node', () => hideTooltip());
+  }
+
   const debounce = (fn, ms=250) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 
   function saveForm() {
@@ -147,6 +217,7 @@
         renderInspector(ele);
       });
       cy.on('tap', (evt) => { if (evt.target === cy) { cy.elements().removeClass('sel neigh'); renderInspector(null); } });
+      bindTooltipEvents();
       cy.on('free zoom pan', saveSnapshotDebounced);
       return true;
     } catch (e) { console.warn('ls load graph snapshot', e); return false; }
@@ -211,6 +282,7 @@
       cy.on('tap', (evt) => { if (evt.target === cy) { cy.elements().removeClass('sel neigh'); renderInspector(null); } });
       // Повторно включаем автоснапшот только для обычного графа
       cy.on('free zoom pan', saveSnapshotDebounced);
+      bindTooltipEvents();
       isScenarioView = false;
       return true;
     } catch (e) { console.warn('restoreSnapshotFromLS', e); return false; }
@@ -477,6 +549,16 @@
           'height': 46,
           'padding': 0
         }},
+        { selector: 'node[group="TechLabel"]', style: {
+          'background-opacity': 0,
+          'border-width': 0,
+          'label': 'data(label)',
+          'font-size': 11,
+          'color': '#9aa0b4',
+          'text-halign': 'center',
+          'text-valign': 'center',
+          'events': 'no'
+        }},
         { selector: 'node.sel', style: {
           'border-width': 3,
           'border-color': '#4f8cff',
@@ -504,12 +586,14 @@
       renderInspector(ele);
     });
     cy.on('tap', (evt) => { if (evt.target === cy) { cy.elements().removeClass('sel neigh'); renderInspector(null); } });
+    bindTooltipEvents();
     // В режиме сценария снимок не сохраняем, чтобы не перетирать исходный граф в LS
   }
 
   function buildScenarioElements(sc) {
-    const GAP_X = 140;
+    const GAP_X = 100;
     const TECH_Y = 80;
+    const TECH_LABEL_Y = TECH_Y - 30;
     const CVE_START_Y = 220;
     const CVE_GAP_Y = 38;
     const CVE_SPREAD_X = 26; // горизонтальный разнос CVE вокруг техники
@@ -526,6 +610,12 @@
       const tid = String(t.id);
       techPos.set(tid, { x, y: TECH_Y });
       elements.push({ data: { id: tid, label: 'Tech', group: 'Technique', raw: t }, position: { x, y: TECH_Y } });
+      // Label above technique with its identifier
+      const tIdLabel = (t.props && t.props.identifier) ? String(t.props.identifier) : '';
+      if (tIdLabel) {
+        const lid = `tl_${tid}`;
+        elements.push({ data: { id: lid, label: tIdLabel, group: 'TechLabel' }, position: { x, y: TECH_LABEL_Y } });
+      }
       if (i > 0) {
         const prev = steps[i - 1].technique;
         if (prev && prev.id) {
@@ -714,6 +804,7 @@
         renderInspector(null);
       }
     });
+    bindTooltipEvents();
     cy.on('free zoom pan', saveSnapshotDebounced);
     trySaveSnapshot();
   }
@@ -846,6 +937,7 @@
       cy.elements().removeClass('sel neigh'); ele.addClass('sel'); ele.closedNeighborhood().difference(ele).addClass('neigh'); renderInspector(ele);
     });
     cy.on('tap', (evt) => { if (evt.target === cy) { cy.elements().removeClass('sel neigh'); renderInspector(null); } });
+    bindTooltipEvents();
 
     // При включённом флаге — сразу показать все CVE
     if (showAllCves && showAllCves.checked) {
@@ -854,7 +946,7 @@
   }
 
   function buildPrimaryElements(mega) {
-    const COL_GAP=120, ROW_GAP=70, TOP_Y=80; const elements=[]; const cols=(mega||[]).slice().sort((a,b)=>(a.tactic_order||0)-(b.tactic_order||0));
+    const COL_GAP=110, ROW_GAP=70, TOP_Y=80; const elements=[]; const cols=(mega||[]).slice().sort((a,b)=>(a.tactic_order||0)-(b.tactic_order||0));
     const groupIds=[];
     for (let ci=0; ci<cols.length; ci++) {
       const col = cols[ci]; const gid = `tg_${ci}`; groupIds.push(gid);

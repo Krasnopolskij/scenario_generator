@@ -286,3 +286,17 @@ button.selected { background: var(--ok); }
 .scenario-step:last-child { border-bottom: 0; }
 .chip { display: inline-block; font-size: 12px; padding: 2px 6px; border-radius: 999px; background: #1d2342; color: var(--text); margin-left: 6px; border: 1px solid #2a3052; }
 .chip:hover { border-color: var(--accent); }
+
+/* Tooltip over graph nodes */
+#graph-tooltip {
+  background: rgba(20,25,57,0.95);
+  color: var(--text);
+  border: 1px solid #1d2342;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+  max-width: 360px;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.35);
+  white-space: nowrap;
+  left: 0; top: 0;
+}
