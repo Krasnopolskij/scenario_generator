@@ -73,6 +73,13 @@
     if (inspToggle) inspToggle.addEventListener('click', () => setInspectorCollapsed(!(insp && insp.classList.contains('collapsed'))));
   }
 
+  // ===== CSS helpers =====
+  const cssVar = (name, fallback='') => {
+    try { const v = getComputedStyle(document.body).getPropertyValue(name).trim(); return v || fallback; } catch { return fallback; }
+  };
+  const labelColorFromCss = () => cssVar('--text', '#e5e7ef');
+  const mutedColorFromCss = () => cssVar('--muted', '#9aa0b4');
+
   // ===== Theme handling =====
   function loadTheme() {
     try { const raw = localStorage.getItem(LS_THEME); if (!raw) return null; const t = JSON.parse(raw); if (t && typeof t === 'object') return t; } catch {}
@@ -351,13 +358,14 @@
       if (!window.cytoscape) return false;
       if (cy) { cy.destroy(); cy = null; }
       const elements = (snap.cy && snap.cy.elements) ? snap.cy.elements : [];
+      const lblColor = labelColorFromCss();
       cy = cytoscape({
         container,
         elements,
         style: [
           { selector: 'node', style: {
             'label': 'data(label)',
-            'color': '#e5e7ef',
+            'color': lblColor,
             'font-size': 12,
             'text-valign': 'center',
             'text-halign': 'center',
@@ -415,13 +423,14 @@
       if (!window.cytoscape) return false;
       if (cy) { cy.destroy(); cy = null; }
       const elements = (snap.cy && snap.cy.elements) ? snap.cy.elements : [];
+      const lblColor = labelColorFromCss();
       cy = cytoscape({
         container,
         elements,
         style: [
           { selector: 'node', style: {
             'label': 'data(label)',
-            'color': '#e5e7ef',
+            'color': lblColor,
             'font-size': 12,
             'text-valign': 'center',
             'text-halign': 'center',
@@ -714,13 +723,15 @@
     if (!window.cytoscape) return;
     const elements = buildScenarioElements(sc);
     if (cy) { cy.destroy(); cy = null; }
+    const lblColor = labelColorFromCss();
+    const mutColor = mutedColorFromCss();
     cy = cytoscape({
       container,
       elements,
       style: [
         { selector: 'node', style: {
           'label': 'data(label)',
-          'color': '#e5e7ef',
+          'color': lblColor,
           'font-size': 12,
           'text-valign': 'center',
           'text-halign': 'center',
@@ -738,7 +749,7 @@
           'border-width': 0,
           'label': 'data(label)',
           'font-size': 11,
-          'color': '#9aa0b4',
+          'color': mutColor,
           'text-halign': 'center',
           'text-valign': 'center',
           'events': 'no'
@@ -935,13 +946,14 @@
     }
 
     if (cy) { cy.destroy(); cy = null; }
+    const lblColor2 = labelColorFromCss();
     cy = cytoscape({
       container,
       elements,
       style: [
         { selector: 'node', style: {
           'label': 'data(label)',
-          'color': '#e5e7ef',
+          'color': lblColor2,
           'font-size': 12,
           'text-valign': 'center',
           'text-halign': 'center',
@@ -1017,6 +1029,21 @@
   // Theme UI and initial apply
   bindThemeUI();
   const initTheme = loadTheme(); if (initTheme) applyTheme(initTheme);
+
+  // React on UI theme changes: update label colors if not overridden by graph theme
+  document.addEventListener('sg:theme-change', () => {
+    try {
+      const saved = loadTheme();
+      const lbl = labelColorFromCss();
+      const mut = mutedColorFromCss();
+      if (cy) {
+        if (!(saved && saved.labels)) {
+          cy.nodes().forEach(n => { n.style('color', lbl); });
+        }
+        cy.nodes('[group="TechLabel"]').forEach(n => { n.style('color', mut); });
+      }
+    } catch {}
+  });
 
   if (genScenariosBtn) {
     genScenariosBtn.addEventListener('click', generateScenarios);

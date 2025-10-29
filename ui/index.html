@@ -5,11 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Scenario Generator UI</title>
   <link rel="stylesheet" href="/static/css/style.css?v=20251009" />
+  <link rel="stylesheet" href="/static/css/light-theme.css?v=20251029" />
 </head>
 <body class="page-data">
   <header>
     <h1>Scenario Generator — Загрузка данных</h1>
     <nav class="nav">
+      <button id="theme-toggle" type="button" class="btn-secondary" title="Светлая тема" aria-label="Светлая тема">☀</button>
       <a href="/" class="nav-link active">Сбор данных</a>
       <a href="/cpe" class="nav-link">Выбор CPE</a>
       <a href="/graph" class="nav-link">Визуализация</a>
@@ -59,7 +61,7 @@
   <footer>
     <span></span>
   </footer>
-
+  <script src="/static/js/theme.js?v=20251029" defer></script>
   <script src="/static/js/app.js?v=20251009"></script>
 </body>
 </html>

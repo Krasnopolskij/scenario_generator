@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Граф — Scenario Generator</title>
   <link rel="stylesheet" href="/static/css/style.css?v=20251027-2" />
+  <link rel="stylesheet" href="/static/css/light-theme.css?v=20251029" />
 
 </head>
 <body class="page-graph">
@@ -12,6 +13,7 @@
     <h1>Визуализация связей CPE</h1>
     <nav class="nav">
       <button id="open-theme" type="button" class="btn-secondary" title="Настройки отображения" aria-label="Настройки">⚙</button>
+      <button id="theme-toggle" type="button" class="btn-secondary" title="Светлая тема" aria-label="Светлая тема">☀</button>
       <a href="/" class="nav-link">Сбор данных</a>
       <a href="/cpe" class="nav-link">Выбор CPE</a>
       <a href="/graph" class="nav-link active">Визуализация</a>
@@ -166,6 +168,7 @@
 
   <!-- Локальная библиотека Cytoscape -->
   <script src="/static/js/vendor/cytoscape.js-3.33.1/dist/cytoscape.min.js"></script>
+  <script src="/static/js/theme.js?v=20251029" defer></script>
   <script src="/static/js/graph.js?v=20251027-7"></script>
 </body>
 </html>
