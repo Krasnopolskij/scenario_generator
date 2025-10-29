@@ -37,17 +37,15 @@ label { display: inline-flex; align-items: center; gap: 8px; margin: 6px 10px 6p
 input[type="number"], input[type="text"] {
   background: #0f1326; border: 1px solid #1d2342; color: var(--text); border-radius: 8px; padding: 8px 10px; outline: none;
 }
-/* Убираем белые стрелки у number в WebKit-браузерах */
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
-/* И в Firefox приводим к текстовому виду */
 input[type="number"] {
-  -moz-appearance: textfield;
+  appearance: textfield;
 }
-/* Disabled inputs visually */
+
 input[disabled], select[disabled] {
   background: #111528 !important;
   border-color: #1d2342 !important;
