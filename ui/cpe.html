@@ -4,7 +4,45 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Выбор CPE — Scenario Generator</title>
-  <link rel="stylesheet" href="/static/css/style.css?v=20251009" />
+  <script>
+    // Применяем сохранённую тему до загрузки CSS, чтобы избежать «моргания»
+    (function () {
+      try {
+        var mode = localStorage.getItem('sg:ui:mode');
+        if (mode === 'light') {
+          document.documentElement.classList.add('light-theme');
+        }
+      } catch (e) {}
+    })();
+  </script>
+  <style>
+    /* Ранние переменные светлой темы, чтобы убрать «мгание» */
+    html.light-theme {
+      --bg: #e9edf2;
+      --panel: #eef1f4;
+      --panel-elev: #fafbfc;
+      --text: #111827;
+      --muted: #475467;
+      --accent: #3b6eea;
+      --ok: #2a9d4b;
+      --warn: #b98900;
+      --error: #d23b3b;
+      --surface-soft: #f2f4f7;
+      --surface-muted: #e7ebf0;
+      --line: #c7cfdb;
+      --line-soft: #c0c8d6;
+      --bg-start: #e7ebf0;
+      --header-bg: var(--panel);
+      --nav-active-bg: #e7ebf0;
+      --nav-hover-bg: #e7ebf0;
+      --nav-active-border: var(--line);
+    }
+    /* Иконка переключателя темы корректна на первом кадре */
+    #theme-toggle { font-size: 0; line-height: 0; }
+    #theme-toggle::before { content: '☀'; font-size: 16px; line-height: 1; }
+    html.light-theme #theme-toggle::before { content: '🌙'; }
+  </style>
+  <link rel="stylesheet" href="/static/css/style.css?v=20251030-pagesfix" />
   <link rel="stylesheet" href="/static/css/light-theme.css?v=20251029" />
 </head>
 <body class="page-cpe">
@@ -97,7 +135,7 @@
   <footer>
     <span></span>
   </footer>
-  <script src="/static/js/theme.js?v=20251029" defer></script>
+  <script src="/static/js/theme.js?v=20251030" defer></script>
   <script src="/static/js/cpe.js?v=20251009"></script>
 </body>
 </html>

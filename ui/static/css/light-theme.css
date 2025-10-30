@@ -64,7 +64,8 @@ body.light-theme header { border-bottom: 1px solid var(--line); box-shadow: 0 1p
 body.light-theme footer { border-top: 1px solid var(--line); color: #667085; box-shadow: 0 -1px 0 rgba(16,24,40,0.03) inset; }
 
 body.light-theme .controls,
-body.light-theme .output {
+body.light-theme .output,
+body.light-theme .ctrl-group {
   background: var(--panel);
   border-color: var(--line);
   box-shadow:
