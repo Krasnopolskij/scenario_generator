@@ -7,6 +7,16 @@
   --ok: #2ecc71;
   --warn: #f1c40f;
   --error: #e74c3c;
+  /* Токены для унификации и раннего применения темы */
+  --line: #111528;
+  --line-soft: #1d2342;
+  --surface-soft: #0f1326;
+  --surface-muted: #2a3052;
+  --bg-start: #0b0e1a;
+  --header-bg: #0b0e1a;
+  --nav-active-bg: #141939;
+  --nav-hover-bg: #141939;
+  --nav-active-border: #1d2b62;
 }
 
 
@@ -14,16 +24,16 @@
 html, body { height: 100%; }
 body {
   margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, sans-serif;
-  color: var(--text); background: linear-gradient(180deg, #0b0e1a, var(--bg));
+  color: var(--text); background: linear-gradient(180deg, var(--bg-start), var(--bg));
 }
 
-header, footer { padding: 12px 20px; background: #0b0e1a; border-bottom: 1px solid #111528; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+header, footer { padding: 12px 20px; background: var(--header-bg); border-bottom: 1px solid var(--line); display:flex; align-items:center; justify-content:space-between; gap:12px; }
 header h1 { margin: 0; font-size: 18px; font-weight: 600; }
-footer { border-top: 1px solid #111528; border-bottom: none; color: var(--muted); font-size: 12px; }
+footer { border-top: 1px solid var(--line); border-bottom: none; color: var(--muted); font-size: 12px; }
 
 main { padding: 20px; display: grid; gap: 20px; grid-template-columns: 420px 1fr; }
 
-.controls, .output { background: var(--panel); border: 1px solid #111528; border-radius: 10px; padding: 16px; }
+.controls, .output { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
 .controls h2, .output h2 { margin: 0 0 12px 0; font-size: 16px; }
 .controls p { color: var(--muted); font-size: 13px; }
 
@@ -35,7 +45,7 @@ label { display: inline-flex; align-items: center; gap: 8px; margin: 6px 10px 6p
 /* Обёртка, чтобы индикатор показывать справа от инпута/селекта */
 .input-wrap { position: relative; width: 100%; display: flex; align-items: center; gap: 8px; }
 input[type="number"], input[type="text"] {
-  background: #0f1326; border: 1px solid #1d2342; color: var(--text); border-radius: 8px; padding: 8px 10px; outline: none;
+  background: var(--surface-soft); border: 1px solid var(--line-soft); color: var(--text); border-radius: 8px; padding: 8px 10px; outline: none;
 }
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button {
@@ -47,15 +57,15 @@ input[type="number"] {
 }
 
 input[disabled], select[disabled] {
-  background: #111528 !important;
-  border-color: #1d2342 !important;
+  background: var(--line) !important;
+  border-color: var(--line-soft) !important;
   color: #6c7390 !important;
   cursor: not-allowed !important;
   opacity: 0.9;
 }
 input[type="number"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79, 140, 255, 0.2); }
 select {
-  background: #0f1326; border: 1px solid #1d2342; color: var(--text); border-radius: 8px; padding: 8px 10px; outline: none;
+  background: var(--surface-soft); border: 1px solid var(--line-soft); color: var(--text); border-radius: 8px; padding: 8px 10px; outline: none;
 }
 select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79, 140, 255, 0.2); }
 
@@ -67,8 +77,8 @@ select:-webkit-autofill {
   -webkit-text-fill-color: var(--text) !important;
   caret-color: var(--text);
   transition: background-color 9999s ease-in-out 0s; /* хак, чтобы Chrome не перекрашивал фон */
-  -webkit-box-shadow: 0 0 0px 1000px #0f1326 inset; /* цвет как у остального UI */
-  box-shadow: 0 0 0px 1000px #0f1326 inset;
+  -webkit-box-shadow: 0 0 0px 1000px var(--surface-soft) inset; /* цвет как у остального UI */
+  box-shadow: 0 0 0px 1000px var(--surface-soft) inset;
 }
 
 /* Выпадающий список и варианты в тёмной теме */
@@ -76,16 +86,16 @@ select {
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
-  background-color: #0f1326;
+  background-color: var(--surface-soft);
   color: var(--text);
 }
 /* Цвет выпадающих пунктов */
-option { background: #0f1326; color: var(--text); }
+option { background: var(--surface-soft); color: var(--text); }
 option:hover { background: #141939; }
 option:disabled { color: #6c7390; }
 
 /* Индикатор статуса выбора поля */
-.status { display:inline-block; width:10px; height:10px; border-radius:50%; margin-left:6px; background:#2a3052; border:1px solid #1d2342; vertical-align:middle; }
+.status { display:inline-block; width:10px; height:10px; border-radius:50%; margin-left:6px; background: var(--surface-muted); border:1px solid var(--line-soft); vertical-align:middle; }
 .input-wrap .status { position: static; margin-left: 4px; }
 .status.ok { background: var(--ok); border-color: var(--ok); }
 
@@ -93,20 +103,36 @@ option:disabled { color: #6c7390; }
 button { cursor: pointer; border: 0; border-radius: 8px; padding: 8px 14px; font-weight: 600; color: white; background: var(--accent); }
 button[disabled] { opacity: 0.65; cursor: not-allowed; }
 #stop-btn { background: var(--error); }
-.btn-link { color: var(--text); text-decoration: none; padding: 8px 10px; border-radius: 8px; border: 1px solid #1d2342; }
-.btn-link:hover { border-color: var(--accent); }
+.btn-link { color: var(--text); text-decoration: none; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line-soft); }
+/* Унифицированная анимация наведения для всех кнопок */
+button,
+.btn-link,
+.nav-link {
+  transition: transform 0.12s ease, filter 0.12s ease, background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+}
+/* Лёгкое «подпрыгивание» при наведении */
+button:not(.insp-toggle):hover,
+.btn-link:hover,
+.nav-link:hover {
+  transform: translateY(-1px);
+}
+button:not(.insp-toggle):active,
+.btn-link:active,
+.nav-link:active { transform: translateY(0); }
+button[disabled]:hover { transform: none !important; filter: none !important; }
 /* Состояние выбранной записи в списке CPE */
 button.selected { background: var(--ok); }
 
 /* Кнопки модалки */
 .btn-primary { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 8px 14px; font-weight: 600; }
-.btn-secondary { background: #2a3052; color: var(--text); border: 1px solid #1d2342; border-radius: 8px; padding: 8px 14px; font-weight: 600; }
+.btn-secondary { background: var(--surface-muted); color: var(--text); border: 1px solid var(--line-soft); border-radius: 8px; padding: 8px 14px; font-weight: 600; }
 
 /* Навигация в шапке */
 .nav { display:flex; gap:8px; }
-.nav-link { display:inline-block; color: var(--text); text-decoration:none; padding:6px 10px; border:1px solid #1d2342; border-radius:8px; }
-.nav-link:hover { border-color: var(--accent); }
-.nav-link.active { background: #141939; border-color:#1d2b62; }
+.nav-link { display:inline-block; color: var(--text); text-decoration:none; padding:6px 10px; border:1px solid var(--line-soft); border-radius:8px; transition: transform 0.12s ease, background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease; }
+/* Вместо подсветки только бордера — лёгкое приподнимание и фон как у активной вкладки */
+.nav-link:hover { background: var(--nav-hover-bg); border-color: var(--nav-active-border); }
+.nav-link.active { background: var(--nav-active-bg); border-color: var(--nav-active-border); }
 
 /* Настройки только для страницы "Сбор данных" */
 .page-data .controls, .page-data .output { min-height: unset !important; height: auto !important; }
@@ -134,8 +160,8 @@ button.selected { background: var(--ok); }
   height: 60vh;
   overflow-y: auto;
   overflow-x: hidden;
-  background: #0b0e1a;
-  border: 1px solid #10152b;
+  background: var(--header-bg);
+  border: 1px solid var(--line);
   border-radius: 8px;
   padding: 12px;
   color: #d6deff;
@@ -150,8 +176,8 @@ button.selected { background: var(--ok); }
 }
 
 .console::-webkit-scrollbar { width: 10px; }
-.console::-webkit-scrollbar-track { background: #0f1326; border-radius: 8px; }
-.console::-webkit-scrollbar-thumb { background: #2a3052; border-radius: 8px; border: 1px solid #1d2342; }
+.console::-webkit-scrollbar-track { background: var(--surface-soft); border-radius: 8px; }
+.console::-webkit-scrollbar-thumb { background: var(--surface-muted); border-radius: 8px; border: 1px solid var(--line-soft); }
 
 .console .ok { color: var(--ok); }
 .console .warn { color: var(--warn); }
@@ -169,30 +195,30 @@ button.selected { background: var(--ok); }
 .suggest { position: relative; height: 0; }
 .suggest ul {
   position: absolute; left: 0; right: 0; top: 4px; z-index: 20;
-  list-style: none; margin: 0; padding: 0; background: #0f1326;
-  border: 1px solid #1d2342; border-radius: 8px; max-height: 260px; overflow: auto;
+  list-style: none; margin: 0; padding: 0; background: var(--surface-soft);
+  border: 1px solid var(--line-soft); border-radius: 8px; max-height: 260px; overflow: auto;
   box-shadow: 0 8px 18px rgba(0,0,0,0.35);
   scrollbar-color: #2a3052 #0f1326; /* Firefox */
 }
 .suggest ul li.more { text-align: center; color: var(--accent); font-weight: 600; cursor: pointer; }
 .suggest ul li.more:hover { background: #141939; }
 .suggest ul::-webkit-scrollbar { width: 10px; }
-.suggest ul::-webkit-scrollbar-track { background: #0f1326; border-radius: 8px; }
-.suggest ul::-webkit-scrollbar-thumb { background: #2a3052; border-radius: 8px; border: 1px solid #1d2342; }
+.suggest ul::-webkit-scrollbar-track { background: var(--surface-soft); border-radius: 8px; }
+.suggest ul::-webkit-scrollbar-thumb { background: var(--surface-muted); border-radius: 8px; border: 1px solid var(--line-soft); }
 .suggest li { padding: 6px 10px; cursor: pointer; }
 .suggest li:hover { background: #141939; }
 
-.results { border: 1px solid #111528; border-radius: 10px; padding: 8px; background: var(--panel); min-height: 80px; max-height: 48vh; overflow: auto; scrollbar-color: #2a3052 #0f1326; }
+.results { border: 1px solid var(--line); border-radius: 10px; padding: 8px; background: var(--panel); min-height: 80px; max-height: 48vh; overflow: auto; scrollbar-color: #2a3052 #0f1326; }
 .results::-webkit-scrollbar { width: 10px; }
-.results::-webkit-scrollbar-track { background: #0f1326; border-radius: 8px; }
-.results::-webkit-scrollbar-thumb { background: #2a3052; border-radius: 8px; border: 1px solid #1d2342; }
-.results .row { display: grid; grid-template-columns: 1fr auto; align-items: center; border-bottom: 1px solid #1d2342; padding: 6px 8px; }
+.results::-webkit-scrollbar-track { background: var(--surface-soft); border-radius: 8px; }
+.results::-webkit-scrollbar-thumb { background: var(--surface-muted); border-radius: 8px; border: 1px solid var(--line-soft); }
+.results .row { display: grid; grid-template-columns: 1fr auto; align-items: center; border-bottom: 1px solid var(--line-soft); padding: 6px 8px; }
 .results .row:last-child { border-bottom: 0; }
-.picked { list-style: none; margin: 8px 0 0 0; padding: 0; border: 1px solid #111528; border-radius: 10px; background: var(--panel); max-height: 26vh; overflow: auto; scrollbar-color: #2a3052 #0f1326; }
+.picked { list-style: none; margin: 8px 0 0 0; padding: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); max-height: 26vh; overflow: auto; scrollbar-color: #2a3052 #0f1326; }
 .picked::-webkit-scrollbar { width: 10px; }
-.picked::-webkit-scrollbar-track { background: #0f1326; border-radius: 8px; }
-.picked::-webkit-scrollbar-thumb { background: #2a3052; border-radius: 8px; border: 1px solid #1d2342; }
-.picked li { padding: 6px 8px; border-bottom: 1px solid #1d2342; }
+.picked::-webkit-scrollbar-track { background: var(--surface-soft); border-radius: 8px; }
+.picked::-webkit-scrollbar-thumb { background: var(--surface-muted); border-radius: 8px; border: 1px solid var(--line-soft); }
+.picked li { padding: 6px 8px; border-bottom: 1px solid var(--line-soft); }
 .picked li:last-child { border-bottom: 0; }
 
 /* Верстка строки выбранного CPE: текст слева, кнопки справа */
@@ -204,7 +230,7 @@ button.selected { background: var(--ok); }
 .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: none; align-items: center; justify-content: center; z-index: 1000; }
 .modal-backdrop.open { display: flex; }
 .modal-backdrop[hidden] { display: none !important; }
-.modal { width: min(680px, 92vw); background: var(--panel); border: 1px solid #1d2342; border-radius: 12px; padding: 16px; box-shadow: 0 12px 36px rgba(0,0,0,0.45); }
+.modal { width: min(680px, 92vw); background: var(--panel); border: 1px solid var(--line-soft); border-radius: 12px; padding: 16px; box-shadow: 0 12px 36px rgba(0,0,0,0.45); }
 .modal-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
 .modal-body { color: var(--muted); margin-bottom: 14px; }
 .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
@@ -245,7 +271,7 @@ button.selected { background: var(--ok); }
 .page-graph .inspector.collapsed > :not(.insp-toggle) { display: none !important; }
 
 /* Toggle button on inspector edge */
-.insp-toggle { position: absolute; left: 0; top: 50%; transform: translate(-50%, -50%); width: 20px; height: 48px; cursor: pointer; border: 1px solid #1d2342; border-radius: 8px 0 0 8px; background: #2a3052; box-shadow: 0 3px 10px rgba(0,0,0,0.35); padding: 0; z-index: 20; transition: background 0.15s ease, box-shadow 0.15s ease; }
+.insp-toggle { position: absolute; left: 0; top: 50%; transform: translate(-50%, -50%); width: 20px; height: 48px; cursor: pointer; border: 1px solid var(--line-soft); border-radius: 8px 0 0 8px; background: var(--surface-muted); box-shadow: 0 3px 10px rgba(0,0,0,0.35); padding: 0; z-index: 20; transition: background 0.15s ease, box-shadow 0.15s ease; }
 .insp-toggle:hover { background: #3b4775; box-shadow: 0 4px 12px rgba(0,0,0,0.45); }
 .insp-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .insp-toggle::before { content: ""; display: block; width: 0; height: 0; border-style: solid; border-width: 10px 0 10px 10px; border-color: transparent transparent transparent var(--text); margin: auto; }
@@ -263,16 +289,19 @@ button.selected { background: var(--ok); }
 .page-graph #graph {
   width: 100%;
   height: 100%;
-  border: 1px solid #1d2342;
+  border: 1px solid var(--line-soft);
   background: var(--panel);
   border-radius: 10px;
   box-shadow: inset 0 0 0 1px rgba(255,255,255,0.02);
   overflow: hidden;
+  position: relative;
 }
-.page-graph .inspector { background: var(--panel); border: 1px solid #111528; border-radius: 10px; padding: 12px; }
+.page-graph #graph .graph-loading { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background: rgba(0,0,0,0.45); color: var(--text); font-weight: 700; z-index: 10000; }
+.page-graph #graph.is-loading .graph-loading { display:flex; }
+.page-graph .inspector { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
 .page-graph .inspector h2 { margin: 0 0 10px 0; font-size: 16px; }
 .page-graph .kv { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size: 12.5px; line-height: 1.5; }
-.page-graph .kv .row { display:grid; grid-template-columns: 120px 1fr; gap:8px; padding:4px 0; border-bottom: 1px solid #1d2342; }
+.page-graph .kv .row { display:grid; grid-template-columns: 120px 1fr; gap:8px; padding:4px 0; border-bottom: 1px solid var(--line-soft); }
 .page-graph .kv .row:last-child { border-bottom: 0; }
 .page-graph .kv .k { color: var(--muted); }
 .page-graph .kv .v { color: var(--text); word-break: break-word; }
@@ -288,25 +317,25 @@ button.selected { background: var(--ok); }
 .scenarios { margin-top: 16px; display: grid; gap: 8px; }
 .sc-actions { margin-bottom: 8px; }
 .sc-meta { color: var(--muted); font-size: 12px; }
-.scenario { border: 1px solid #1d2342; border-radius: 8px; background: #0f1326; }
-.scenario-head { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; padding: 8px 10px; border-bottom: 1px solid #1d2342; }
+.scenario { border: 1px solid var(--line-soft); border-radius: 8px; background: var(--surface-soft); }
+.scenario-head { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--line-soft); }
 .scenario-title { font-weight: 700; font-size: 13px; }
 .scenario-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.scenario-actions button { background: #2a3052; color: var(--text); width: 100%; }
+.scenario-actions button { background: var(--surface-muted); color: var(--text); width: 100%; }
 .scenario-actions button.selected { background: var(--ok) !important; }
 .scenario.primary .scenario-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .scenario.primary .scenario-actions button { width: 220px; }
 .scenario-steps { max-height: 220px; overflow: auto; }
-.scenario-step { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 6px 10px; border-bottom: 1px solid #1d2342; cursor: pointer; }
+.scenario-step { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--line-soft); cursor: pointer; }
 .scenario-step:last-child { border-bottom: 0; }
-.chip { display: inline-block; font-size: 12px; padding: 2px 6px; border-radius: 999px; background: #1d2342; color: var(--text); margin-left: 6px; border: 1px solid #2a3052; }
+.chip { display: inline-block; font-size: 12px; padding: 2px 6px; border-radius: 999px; background: var(--line-soft); color: var(--text); margin-left: 6px; border: 1px solid var(--surface-muted); }
 .chip:hover { border-color: var(--accent); }
 
 /* Tooltip over graph nodes */
 #graph-tooltip {
   background: rgba(20,25,57,0.95);
   color: var(--text);
-  border: 1px solid #1d2342;
+  border: 1px solid var(--line-soft);
   border-radius: 6px;
   padding: 4px 8px;
   font-size: 12px;
@@ -319,4 +348,4 @@ button.selected { background: var(--ok); }
 /* Theme modal */
 .theme-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px; margin: 8px 0; }
 .theme-row label { color: var(--text); font-size: 14px; }
-.theme-row input[type="color"] { width: 48px; height: 28px; padding: 0; border: 1px solid #1d2342; border-radius: 6px; background: #0f1326; }
+.theme-row input[type="color"] { width: 48px; height: 28px; padding: 0; border: 1px solid var(--line-soft); border-radius: 6px; background: var(--surface-soft); }

@@ -12,6 +12,7 @@
   const genScenariosBtn = document.getElementById('gen-scenarios');
   const clearScenariosBtn = document.getElementById('clear-scenarios');
   const scenariosList = document.getElementById('scenarios-list');
+  const drawBtn = document.getElementById('draw-btn');
   // Inspector collapse controls
   const insp = document.querySelector('.page-graph .inspector');
   const inspToggle = document.getElementById('insp-toggle');
@@ -312,6 +313,35 @@
     } catch (e) { console.warn('ls save graph snapshot', e); }
   }
   const saveSnapshotDebounced = debounce(trySaveSnapshot, 400);
+
+  // === Loading overlay on graph canvas ===
+  function ensureLoadingOverlay() {
+    if (!container) return null;
+    let overlay = container.querySelector('.graph-loading');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.className = 'graph-loading';
+      overlay.textContent = 'Загрузка...';
+      container.appendChild(overlay);
+    }
+    return overlay;
+  }
+  function showLoading() {
+    try {
+      const ov = ensureLoadingOverlay();
+      if (container) container.classList.add('is-loading');
+      if (drawBtn) drawBtn.disabled = true;
+      // Also mark busy for a11y
+      if (container) container.setAttribute('aria-busy', 'true');
+    } catch {}
+  }
+  function hideLoading() {
+    try {
+      if (container) container.classList.remove('is-loading');
+      if (drawBtn) drawBtn.disabled = false;
+      if (container) container.removeAttribute('aria-busy');
+    } catch {}
+  }
   
   // Сохранение настроек панели сценариев
   function saveScForm() {
@@ -911,100 +941,108 @@
       return;
     }
     saveForm();
-    const params = new URLSearchParams({ cpe, mode, limit: '2000' });
-    const resp = await fetch(`/api/graph/subgraph?${params.toString()}`);
-    if (!resp.ok) {
-      alert(`Ошибка API: ${resp.status}`);
-      return;
-    }
-    let data;
+    showLoading();
+    // Дать браузеру шанс показать оверлей до тяжёлой работы
+    await new Promise((r) => requestAnimationFrame(() => r()))
+      .catch(() => {});
     try {
-      data = await resp.json();
-    } catch (e) {
-      alert('Ошибка разбора ответа API');
-      return;
-    }
-    const ncount = (data.nodes || []).length;
-    const ecount = (data.edges || []).length;
-    console.log('subgraph:', { nodes: ncount, edges: ecount });
-
-    if (!window.cytoscape) {
-      container.innerHTML = '<div style="padding:8px;color:#bbb">Cytoscape не найден. Убедитесь, что подключён локальный файл /static/js/vendor/cytoscape.js-3.33.1/dist/cytoscape.min.js</div>';
-      return;
-    }
-    const elements = [];
-    for (const n of data.nodes || []) {
-      elements.push({ data: { id: n.id, label: n.label, group: n.group, raw: n } });
-    }
-    for (const e of data.edges || []) {
-      elements.push({ data: { id: e.id, source: e.source, target: e.target, type: e.type } });
-    }
-
-    if (ncount === 0 && ecount === 0) {
-      container.innerHTML = '<div style="padding:8px;color:#666">Подграф пуст — проверьте cpe23Uri.</div>';
-      return;
-    }
-
-    if (cy) { cy.destroy(); cy = null; }
-    const lblColor2 = labelColorFromCss();
-    cy = cytoscape({
-      container,
-      elements,
-      style: [
-        { selector: 'node', style: {
-          'label': 'data(label)',
-          'color': lblColor2,
-          'font-size': 12,
-          'text-valign': 'center',
-          'text-halign': 'center',
-          'text-wrap': 'none',
-          'background-color': ele => colorByGroup(ele.data('group')),
-          'shape': 'ellipse',
-          'border-width': 1,
-          'border-color': '#2a3052',
-          'width': 46,
-          'height': 46,
-          'padding': 0
-        }},
-        { selector: 'node.sel', style: {
-          'border-width': 3,
-          'border-color': '#4f8cff',
-          'z-index': 999
-        }},
-        { selector: 'node.neigh', style: {
-          'border-width': 2,
-          'border-color': '#3b4775'
-        }},
-        { selector: 'edge', style: {
-          'curve-style': 'bezier',
-          'target-arrow-shape': 'none',
-          'line-color': ele => edgeColor(ele.data('type')),
-          'width': 1.2,
-          'opacity': 0.85
-        }},
-      ],
-      layout: { name: 'cose', animate: false, fit: true, padding: 20 }
-    });
-
-    cy.on('tap', 'node', (evt) => {
-      cy.elements().removeClass('sel neigh');
-      const ele = evt.target;
-      ele.addClass('sel');
-      ele.closedNeighborhood().difference(ele).addClass('neigh');
-      renderInspector(ele);
-    });
-
-    // Сбор выделения по клику на холсте
-    cy.on('tap', (evt) => {
-      if (evt.target === cy) {
-        cy.elements().removeClass('sel neigh');
-        renderInspector(null);
+      const params = new URLSearchParams({ cpe, mode, limit: '2000' });
+      const resp = await fetch(`/api/graph/subgraph?${params.toString()}`);
+      if (!resp.ok) {
+        alert(`Ошибка API: ${resp.status}`);
+        return;
       }
-    });
-    bindTooltipEvents();
-    cy.on('free zoom pan', saveSnapshotDebounced);
-    trySaveSnapshot();
-    const th4 = loadTheme(); if (th4) applyTheme(th4);
+      let data;
+      try {
+        data = await resp.json();
+      } catch (e) {
+        alert('Ошибка разбора ответа API');
+        return;
+      }
+      const ncount = (data.nodes || []).length;
+      const ecount = (data.edges || []).length;
+      console.log('subgraph:', { nodes: ncount, edges: ecount });
+
+      if (!window.cytoscape) {
+        container.innerHTML = '<div style="padding:8px;color:#bbb">Cytoscape не найден. Убедитесь, что подключён локальный файл /static/js/vendor/cytoscape.js-3.33.1/dist/cytoscape.min.js</div>';
+        return;
+      }
+      const elements = [];
+      for (const n of data.nodes || []) {
+        elements.push({ data: { id: n.id, label: n.label, group: n.group, raw: n } });
+      }
+      for (const e of data.edges || []) {
+        elements.push({ data: { id: e.id, source: e.source, target: e.target, type: e.type } });
+      }
+
+      if (ncount === 0 && ecount === 0) {
+        container.innerHTML = '<div style="padding:8px;color:#666">Подграф пуст — проверьте cpe23Uri.</div>';
+        return;
+      }
+
+      if (cy) { cy.destroy(); cy = null; }
+      const lblColor2 = labelColorFromCss();
+      cy = cytoscape({
+        container,
+        elements,
+        style: [
+          { selector: 'node', style: {
+            'label': 'data(label)',
+            'color': lblColor2,
+            'font-size': 12,
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'text-wrap': 'none',
+            'background-color': ele => colorByGroup(ele.data('group')),
+            'shape': 'ellipse',
+            'border-width': 1,
+            'border-color': '#2a3052',
+            'width': 46,
+            'height': 46,
+            'padding': 0
+          }},
+          { selector: 'node.sel', style: {
+            'border-width': 3,
+            'border-color': '#4f8cff',
+            'z-index': 999
+          }},
+          { selector: 'node.neigh', style: {
+            'border-width': 2,
+            'border-color': '#3b4775'
+          }},
+          { selector: 'edge', style: {
+            'curve-style': 'bezier',
+            'target-arrow-shape': 'none',
+            'line-color': ele => edgeColor(ele.data('type')),
+            'width': 1.2,
+            'opacity': 0.85
+          }},
+        ],
+        layout: { name: 'cose', animate: false, fit: true, padding: 20 }
+      });
+
+      cy.on('tap', 'node', (evt) => {
+        cy.elements().removeClass('sel neigh');
+        const ele = evt.target;
+        ele.addClass('sel');
+        ele.closedNeighborhood().difference(ele).addClass('neigh');
+        renderInspector(ele);
+      });
+
+      // Сбор выделения по клику на холсте
+      cy.on('tap', (evt) => {
+        if (evt.target === cy) {
+          cy.elements().removeClass('sel neigh');
+          renderInspector(null);
+        }
+      });
+      bindTooltipEvents();
+      cy.on('free zoom pan', saveSnapshotDebounced);
+      trySaveSnapshot();
+      const th4 = loadTheme(); if (th4) applyTheme(th4);
+    } finally {
+      hideLoading();
+    }
   }
 
   form.addEventListener('submit', (e) => {

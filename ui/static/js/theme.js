@@ -16,7 +16,11 @@
 
   function apply(mode) {
     const isLight = mode === 'light';
-    try { document.body.classList.toggle('light-theme', isLight); } catch {}
+    try {
+      document.body.classList.toggle('light-theme', isLight);
+      // Дублируем класс на <html>, чтобы стили могли применяться до построения <body>
+      document.documentElement.classList.toggle('light-theme', isLight);
+    } catch {}
     updateButton(mode);
     try { document.dispatchEvent(new CustomEvent('sg:theme-change', { detail: { mode } })); } catch {}
   }
@@ -55,4 +59,3 @@
     init();
   }
 })();
-
