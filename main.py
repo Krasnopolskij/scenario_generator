@@ -96,6 +96,18 @@ def api_graph_subgraph(cpe: str, mode: str = "full", limit: int = 1000):
             "WITH p WHERE p IS NOT NULL "
             "RETURN DISTINCT p LIMIT $limit"
         )
+        # cypher = (
+        #     "MATCH (cpe:CPE {cpe23Uri: $cpe}) "
+        #     "MATCH p1 = (v:CVE)-[:AFFECTS]->(cpe) " 
+        #     "OPTIONAL MATCH p2 = (w:CWE)-[:CWE_TO_CVE]->(v) "
+        #     "OPTIONAL MATCH p3 = (cap_cwe:CAPEC)-[:CAPEC_TO_CWE]->(w) "
+        #     "OPTIONAL MATCH p4 = (w)<-[:CAPEC_TO_CWE]-(cap_cwe2:CAPEC) -[:CAPEC_PARENT_TO_CAPEC_CHILD*0..1]- (cap_tech:CAPEC)-[:CAPEC_TO_TECHNIQUE]->(t:Technique) "
+        #     "WITH collect(p1) + collect(p2) + collect(p3) + collect(p4) AS paths "
+        #     "UNWIND paths AS p "
+        #     "WITH p WHERE p IS NOT NULL "
+        #     "RETURN DISTINCT p LIMIT $limit"
+        # )
+
         params = {"cpe": cpe_in, "limit": limit}
 
     rows = g.run(cypher, **params)
