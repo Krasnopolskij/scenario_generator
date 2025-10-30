@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Граф — Scenario Generator</title>
+  <title>Генерация сценариев — Scenario Generator</title>
   <script>
     // Применяем сохранённую тему до загрузки CSS, чтобы избежать «моргания»
     (function () {
@@ -16,7 +16,7 @@
     })();
   </script>
   <style>
-    /* Ранние переменные светлой темы, чтобы убрать «мигание» */
+    /* Ранние переменные светлой темы, чтобы убрать мигание */
     html.light-theme {
       --bg: #e9edf2;
       --panel: #eef1f4;
@@ -48,20 +48,20 @@
 </head>
 <body class="page-graph">
   <header>
-    <h1>Визуализация связей CPE</h1>
+    <h1>Генерация сценариев</h1>
     <nav class="nav">
       <button id="open-theme" type="button" class="btn-secondary" title="Настройки отображения" aria-label="Настройки">⚙</button>
       <button id="theme-toggle" type="button" class="btn-secondary" title="Светлая тема" aria-label="Светлая тема">☀</button>
       <a href="/" class="nav-link">Сбор данных</a>
       <a href="/cpe" class="nav-link">Выбор CPE</a>
-      <a href="/graph" class="nav-link active">Визуализация</a>
+      <a href="/graph" class="nav-link active">Генерация сценариев</a>
     </nav>
   </header>
 
   <main>
     <section class="controls has-groups">
       <div class="ctrl-group">
-        <h2>Построение связей CPE</h2>
+        <h2>Визуализация связей CPE</h2>
         <form id="graph-form" class="form-inline">
         <label for="cpe">URI объекта защиты:</label>
         <input id="cpe" name="cpe" type="text" placeholder="например, cpe:2.3:a:linkace:linkace:*:*:*:*:*:*:*:*" />

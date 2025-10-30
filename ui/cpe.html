@@ -47,23 +47,23 @@
 </head>
 <body class="page-cpe">
   <header>
-    <h1>Выбор CPE</h1>
+    <h1>Выбор объектов защиты</h1>
     <nav class="nav">
       <button id="theme-toggle" type="button" class="btn-secondary" title="Светлая тема" aria-label="Светлая тема">☀</button>
       <a href="/" class="nav-link">Сбор данных</a>
       <a href="/cpe" class="nav-link active">Выбор CPE</a>
-      <a href="/graph" class="nav-link">Визуализация</a>
+      <a href="/graph" class="nav-link">Генерация сценариев</a>
     </nav>
   </header>
 
   <main>
     <section class="controls">
       <h2>Каталог CPE</h2>
-      <p>Сначала укажите тип (part), затем уточните вендора, продукт и версию. Поля поддерживают автодополнение.</p>
+      <p>Сначала выберите тип объекта, затем уточните вендора, продукт и версию. Поля поддерживают автодополнение.</p>
 
       <form id="cpe-form" class="cpe-form">
         <div class="field">
-          <label for="part">Тип (part):</label>
+          <label for="part">Тип:</label>
           <div class="input-wrap">
             <select id="part" name="part" required>
               <option value="" disabled selected>выберите тип</option>

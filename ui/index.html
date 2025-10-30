@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Scenario Generator UI</title>
+  <title>Сбор данных — Scenario Generator</title>
   <script>
     // Применяем сохранённую тему до загрузки CSS, чтобы избежать «моргания»
     (function () {
@@ -47,30 +47,30 @@
 </head>
 <body class="page-data">
   <header>
-    <h1>Scenario Generator — Загрузка данных</h1>
+    <h1>Сбор данных</h1>
     <nav class="nav">
       <button id="theme-toggle" type="button" class="btn-secondary" title="Светлая тема" aria-label="Светлая тема">☀</button>
       <a href="/" class="nav-link active">Сбор данных</a>
       <a href="/cpe" class="nav-link">Выбор CPE</a>
-      <a href="/graph" class="nav-link">Визуализация</a>
+      <a href="/graph" class="nav-link">Генерация сценариев</a>
     </nav>
   </header>
 
   <main>
     <section class="controls">
-      <h2>Что запустить</h2>
-      <p>Если ничего не выбрано — выполняется полный цикл сбора данных (техники → CAPEC → CWE → CVE).</p>
+      <h2>Модули загрузки данных</h2>
+      <p>Если ничего не выбрано, выполняется полный цикл сбора данных (MITRE ATT&CK, CAPEC, CWE, CVE).</p>
       <form id="run-form">
         <fieldset>
-          <legend>Выбор загрузчиков (ONLY)</legend>
-          <label><input type="checkbox" name="only" value="techniques" /> Техники</label>
+          <legend>Выбор конкретных модулей</legend>
+          <label><input type="checkbox" name="only" value="techniques" /> MITRE ATT&CK</label>
           <label><input type="checkbox" name="only" value="capec" /> CAPEC</label>
           <label><input type="checkbox" name="only" value="cwe" /> CWE</label>
           <label><input type="checkbox" name="only" value="cve" /> CVE</label>
         </fieldset>
 
         <fieldset>
-          <legend>Пропустить (SKIP)</legend>
+          <legend>Пропустить модули</legend>
           <label><input type="checkbox" name="skip" value="techniques" /> Техники</label>
           <label><input type="checkbox" name="skip" value="capec" /> CAPEC</label>
           <label><input type="checkbox" name="skip" value="cwe" /> CWE</label>

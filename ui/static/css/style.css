@@ -32,7 +32,7 @@ header, footer { padding: 12px 20px; background: var(--header-bg); border-bottom
 header h1 { margin: 0; font-size: 18px; font-weight: 600; }
 footer { border-top: 1px solid var(--line); border-bottom: none; color: var(--muted); font-size: 12px; }
 
-main { padding: 20px; display: grid; gap: 20px; grid-template-columns: 420px 1fr; }
+main { padding: 20px; display: grid; gap: 20px; grid-template-columns: 450px 1fr; }
 
 .controls, .output { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
 .controls h2, .output h2 { margin: 0 0 12px 0; font-size: 16px; }
