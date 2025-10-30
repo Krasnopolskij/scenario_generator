@@ -83,7 +83,7 @@ def main():
             try:
                 year = int(raw)
                 current_year = dt.datetime.now(dt.UTC).year
-                if 1999 <= year <= current_year:
+                if 2002 <= year <= current_year:
                     os.environ["NVD_FROM_YEAR"] = str(year)
                 else:
                     print(f"--cve-from-year проигнорирован (вне диапазона): {raw}. Импорт по всем годам.")

@@ -613,9 +613,9 @@ def load():
         raw_from = (os.getenv("NVD_FROM_YEAR") or "").strip()
         raw_to = (os.getenv("NVD_TO_YEAR") or "").strip()
         try:
-            from_year = int(raw_from) if raw_from else 1999
+            from_year = int(raw_from) if raw_from else 2002
         except Exception:
-            from_year = 1999
+            from_year = 2002
         try:
             to_year = int(raw_to) if raw_to else current_year
         except Exception:
@@ -640,4 +640,8 @@ def load():
         print(f"Импорт CVE завершён за {time.time() - t0:.1f}с")
     except Exception as e:
         print(f"[CRITICAL]: {str(e)}")
+        if "dbms.memory.transaction.total.max threshold reached" in str(e):
+            print("Превышено максимальное потребление памяти транзакцией Neo4j.")
+            print("Необходимо уменьшить размера батча NVD_BATCH в файле с переменными окружения .env, либо увеличить параметр dbms.memory.transaction.total.max в настройках Neo4j.")
+            print("Любое редактирование переменных окружения требует перезапуска приложения.")
         sys.exit(1)
