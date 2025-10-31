@@ -309,7 +309,7 @@
     const actions = document.createElement('span');
     actions.className = 'picked-actions';
     const show = document.createElement('button');
-    show.textContent = 'Отобразить связи';
+    show.textContent = 'Перейти к генерации';
     show.className = 'btn-link';
     show.addEventListener('click', (e) => { e.preventDefault(); openModal(cpe); });
     const rm = document.createElement('button');
