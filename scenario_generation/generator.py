@@ -25,13 +25,14 @@ def _node_to_json(n) -> Dict[str, Any]:
     return {"id": nid, "labels": labels, "props": props}
 
 
-def _max_base_cvss_from_cves(cves: List[Dict[str, Any]]) -> float:
-    """Возвращает максимальный базовый CVSS среди списка CVE.
+def _sum_base_cvss_from_cves(cves: List[Dict[str, Any]]) -> float:
+    """Возвращает суммарный базовый CVSS по всем CVE из списка.
 
-    Базовый CVSS здесь трактуем как сумму компонент C/I/A,
+    Базовый CVSS CVE трактуется как сумма компонент C/I/A,
     т.к. в модели CVE хранятся отдельные вклады (cvss_C_score, cvss_I_score, cvss_A_score).
+    Итоговый вес техники — сумма этих базовых значений по всем связанным CVE.
     """
-    max_val = 0.0
+    total = 0.0
     for c in cves:
         p = c.get("props") or {}
         try:
@@ -40,9 +41,8 @@ def _max_base_cvss_from_cves(cves: List[Dict[str, Any]]) -> float:
                  + float(p.get("cvss_A_score") or 0.0)
         except Exception:
             base = 0.0
-        if base > max_val:
-            max_val = base
-    return max_val
+        total += float(base)
+    return total
 
 
 def _ensure_order(v) -> int:
@@ -174,8 +174,8 @@ def generate_scenarios(
         props = tech.get("props", {})
         tactic_order = _ensure_order(props.get("tactic_order"))
         primary_tactic = (props.get("primary_tactic") or "?")
-        # вес шага — максимальный базовый CVSS среди связанных CVE
-        weight = _max_base_cvss_from_cves(rec["cves"]) if rec.get("cves") else 0.0
+        # вес шага — сумма базовых CVSS среди всех связанных CVE
+        weight = _sum_base_cvss_from_cves(rec["cves"]) if rec.get("cves") else 0.0
         step = {
             "tactic_order": tactic_order,
             "tactic": primary_tactic,
