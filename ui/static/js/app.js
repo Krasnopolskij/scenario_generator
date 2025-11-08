@@ -240,4 +240,74 @@
     updateDisable();
     try { localStorage.removeItem(LS_KEY); } catch (e) { console.warn('ls clear filters', e); }
   });
+
+  // защита от ухода со страницы во время загрузки
+  const leaveBackdrop = document.getElementById('leave-confirm-backdrop');
+  const leaveCancel = document.getElementById('leave-cancel');
+  const leaveConfirm = document.getElementById('leave-confirm');
+  let leavePendingHref = null;
+  let allowLeave = false; // когда true, beforeunload не блокирует
+
+  // наличие запущенного процесса определяется по currentRunId
+  const isBusy = () => !!currentRunId;
+
+  function openLeaveModal(href=null) {
+    leavePendingHref = href;
+    if (leaveBackdrop) { leaveBackdrop.hidden = false; leaveBackdrop.classList.add('open'); }
+  }
+  function closeLeaveModal() {
+    leavePendingHref = null;
+    if (leaveBackdrop) { leaveBackdrop.classList.remove('open'); leaveBackdrop.hidden = true; }
+  }
+  if (leaveCancel) leaveCancel.addEventListener('click', closeLeaveModal);
+  if (leaveBackdrop) leaveBackdrop.addEventListener('click', (e) => { if (e.target === leaveBackdrop) closeLeaveModal(); });
+  if (leaveConfirm) leaveConfirm.addEventListener('click', async () => {
+    allowLeave = true;
+    const href = leavePendingHref;
+    // остановка серверного процесса перед уходом
+    try {
+      if (currentRunId) {
+        const controller = new AbortController();
+        const t = setTimeout(() => controller.abort(), 3000);
+        try {
+          await fetch('/stop', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ run_id: currentRunId }),
+            keepalive: true,
+            signal: controller.signal,
+          }).catch(() => {});
+        } finally {
+          clearTimeout(t);
+        }
+      }
+    } catch {}
+    try { if (abortController) abortController.abort(); } catch {}
+    closeLeaveModal();
+    if (href) window.location.href = href;
+  });
+
+  // Перехватываем клики по внутренним ссылкам
+  document.addEventListener('click', (e) => {
+    if (!isBusy() || allowLeave) return;
+    const a = e.target && e.target.closest ? e.target.closest('a') : null;
+    if (!a) return;
+    // модификаторы/новая вкладка/якоря/скрипты пропускаем
+    const hrefAttr = a.getAttribute('href');
+    if (!hrefAttr || hrefAttr.startsWith('#') || hrefAttr.startsWith('javascript:')) return;
+    if (a.target === '_blank' || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+    let url;
+    try { url = new URL(a.href, window.location.href); } catch { return; }
+    if (url.origin !== window.location.origin) return; // внешние ссылки не блокируем модалкой
+    e.preventDefault();
+    openLeaveModal(a.href);
+  }, true);
+
+  // Блокируем перезагрузку/закрытие/переход назад системным диалогом браузера
+  window.addEventListener('beforeunload', (e) => {
+    if (!isBusy() || allowLeave) return;
+    e.preventDefault();
+    e.returnValue = '';
+    return '';
+  });
 })();

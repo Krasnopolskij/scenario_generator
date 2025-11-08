@@ -99,6 +99,19 @@
   <footer>
     <span></span>
   </footer>
+  <!-- Предупреждение при попытке покинуть страницу во время загрузки -->
+  <div id="leave-confirm-backdrop" class="modal-backdrop" hidden>
+    <div class="modal">
+      <div class="modal-title">Идёт загрузка данных</div>
+      <div class="modal-body">
+        Сейчас выполняется загрузка данных. При подтверждении перехода все незавершённые операции будут остановлены.<br />
+      </div>
+      <div class="modal-actions">
+        <button id="leave-cancel" class="btn-secondary">Остаться</button>
+        <button id="leave-confirm" class="btn-primary">Уйти со страницы</button>
+      </div>
+    </div>
+  </div>
   <script src="/static/js/theme.js?v=20251030" defer></script>
   <script src="/static/js/app.js?v=20251009"></script>
 </body>
