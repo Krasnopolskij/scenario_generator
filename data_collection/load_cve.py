@@ -6,6 +6,7 @@ import json
 import time
 import datetime as dt
 from typing import List, Dict, Optional, Tuple
+import hashlib
 import requests
 from py2neo import Graph
 from tqdm import tqdm
@@ -367,6 +368,40 @@ def download_feed(url: str) -> dict:
         return json.loads(data)
 
 
+def hashes_file_path() -> str:
+    return os.path.join(os.path.dirname(__file__), "nvd_hashes.json")
+
+
+def read_hashes() -> Dict[str, str]:
+    path = hashes_file_path()
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except FileNotFoundError:
+        return {}
+    except Exception:
+        return {}
+
+
+def write_hashes(hashes: Dict[str, str]) -> None:
+    path = hashes_file_path()
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(hashes, f, ensure_ascii=False, indent=2, sort_keys=True)
+    except Exception:
+        pass
+
+
+def download_feed_with_hash(url: str) -> Tuple[dict, str]:
+    with requests.get(url, timeout=120, stream=True, headers={"User-Agent": "nvd-unified-import/1.0"}) as r:
+        r.raise_for_status()
+        raw = r.content
+        digest = hashlib.sha256(raw).hexdigest()
+        data = gzip.decompress(raw)
+        return json.loads(data), digest
+
+
 def upsert_batch(graph: Graph, batch: List[dict], epss_map: Dict[str, Dict[str, Optional[float]]]):
     # Прикрепляем EPSS к элементам пакета (не фильтруем, если нет)
     for item in batch:
@@ -453,7 +488,13 @@ def upsert_batch(graph: Graph, batch: List[dict], epss_map: Dict[str, Dict[str, 
 def import_year(graph: Graph, year: int, batch_size: int = 500):
     url = f"{NVD_BASE}/nvdcve-2.0-{year}.json.gz"
     print(f"[NVD] Год {year}: загрузка фида…")
-    doc = download_feed(url)
+    doc, digest = download_feed_with_hash(url)
+
+    # Проверка хеша и пропуск импорта при отсутствии изменений
+    hashes = read_hashes()
+    if hashes.get(str(year)) == digest:
+        print(f"Фид не содержит изменений, база в актуальном состоянии. Импорт CVE за год {year} пропущен")
+        return
     vulns = doc.get("vulnerabilities") or []
     total = len(vulns)
     print(f"[NVD] Год {year}: {total} CVE")
@@ -489,6 +530,10 @@ def import_year(graph: Graph, year: int, batch_size: int = 500):
     if pbar.n < total:
         pbar.update(total - pbar.n)
     pbar.close()
+
+    # Сохраняем новый хеш только после успешного импорта
+    hashes[str(year)] = digest
+    write_hashes(hashes)
 
     print(f"[OK] Год {year} импортирован")
 
