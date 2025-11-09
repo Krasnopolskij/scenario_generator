@@ -10,7 +10,6 @@
   let currentRunId = null;
   // Запоминаем ключ последней зафиксированной строки прогресса, чтобы не дублировать финал
   let lastFinalKey = null;
-  // Флаг: сейчас обрабатываем перерисовку прогресс-бара
   let inBar = false;
 
   function appendRaw(text) {

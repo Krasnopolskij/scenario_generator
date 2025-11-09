@@ -13,11 +13,14 @@
   const clearScenariosBtn = document.getElementById('clear-scenarios');
   const scenariosList = document.getElementById('scenarios-list');
   const drawBtn = document.getElementById('draw-btn');
-  // Inspector collapse controls
+  // Переключатели профиля и темы
+  const profileBtn = document.getElementById('profile-toggle');
+  const themeToggleBtn = document.getElementById('theme-toggle');
+  // Элементы управления сворачиванием инспектора
   const insp = document.querySelector('.page-graph .inspector');
   const inspToggle = document.getElementById('insp-toggle');
   const mainGrid = document.querySelector('.page-graph main');
-  // Theme controls
+  // Настройки темы
   const themeBtn = document.getElementById('open-theme');
   const themeBackdrop = document.getElementById('theme-backdrop');
   const themeCanvasInput = document.getElementById('theme-canvas');
@@ -29,16 +32,7 @@
     CAPEC: document.getElementById('theme-node-capec'),
     Technique: document.getElementById('theme-node-tech'),
   };
-  const themeEdgeInputs = {
-    AFFECTS: document.getElementById('theme-edge-AFFECTS'),
-    CWE_TO_CVE: document.getElementById('theme-edge-CWE_TO_CVE'),
-    CAPEC_TO_CWE: document.getElementById('theme-edge-CAPEC_TO_CWE'),
-    CAPEC_PARENT_TO_CAPEC_CHILD: document.getElementById('theme-edge-CAPEC_PARENT_TO_CAPEC_CHILD'),
-    CAPEC_TO_TECHNIQUE: document.getElementById('theme-edge-CAPEC_TO_TECHNIQUE'),
-    SC_STEP: document.getElementById('theme-edge-SC_STEP'),
-    SC_TECH_TO_CVE: document.getElementById('theme-edge-SC_TECH_TO_CVE'),
-    SC_GROUP: document.getElementById('theme-edge-SC_GROUP'),
-  };
+  // Управление цветами рёбер убрано из пользовательских настроек
   const themeResetBtn = document.getElementById('theme-reset');
   const themeCancelBtn = document.getElementById('theme-cancel');
   const themeApplyBtn = document.getElementById('theme-apply');
@@ -48,20 +42,23 @@
   const LS_SC_FORM = 'sg:graph:scform';
   const LS_THEME = 'sg:graph:theme';
   const LS_INSP = 'sg:graph:inspCollapsed';
-  const SNAP_LIMIT = 2 * 1024 * 1024; // 2MB
+  const LS_PROFILE = 'sg:ui:profile'; // 'color' | 'mono'
+  const SNAP_LIMIT = 2048; // 2 МБ
 
   let cy = null;
   let isScenarioView = false;
   let currentScenarioId = null;
   const scenarioShowBtns = new Map();
+  let currentScenarioData = null; // выбранный сценарий для повторной перерисовки
+  let lastMega = null; // mega для первичного сценария
 
-  // ===== Inspector collapse handling =====
+  // Обработка сворачивания инспектора
   function setInspectorCollapsed(flag, save=true) {
     try {
       if (mainGrid) mainGrid.classList.toggle('insp-collapsed', !!flag);
       if (insp) insp.classList.toggle('collapsed', !!flag);
       if (save) { try { localStorage.setItem(LS_INSP, JSON.stringify(!!flag)); } catch {} }
-      // Let Cytoscape know container resized
+      // Сообщаем Cytoscape об изменении размера контейнера
       if (cy && typeof cy.resize === 'function') setTimeout(() => { try { cy.resize(); } catch {} }, 0);
     } catch {}
   }
@@ -74,39 +71,249 @@
     if (inspToggle) inspToggle.addEventListener('click', () => setInspectorCollapsed(!(insp && insp.classList.contains('collapsed'))));
   }
 
-  // ===== CSS helpers =====
+  // вспомогательные функции CSS
   const cssVar = (name, fallback='') => {
     try { const v = getComputedStyle(document.body).getPropertyValue(name).trim(); return v || fallback; } catch { return fallback; }
   };
   const labelColorFromCss = () => cssVar('--text', '#e5e7ef');
   const mutedColorFromCss = () => cssVar('--muted', '#9aa0b4');
 
-  // ===== Theme handling =====
+  // профили и вспомогательные функции для Ч/Б
+  function getUiThemeMode() {
+    try { const m = localStorage.getItem('sg:ui:mode'); return (m === 'light' || m === 'dark') ? m : 'dark'; } catch { return 'dark'; }
+  }
+  function getProfile() {
+    try { const v = localStorage.getItem(LS_PROFILE); return v === 'mono' ? 'mono' : 'color'; } catch { return 'color'; }
+  }
+  function setProfile(p) {
+    try { localStorage.setItem(LS_PROFILE, p === 'mono' ? 'mono' : 'color'); } catch {}
+    // В Ч/Б профиле принудительно убираем пользовательский фон холста
+    try { if (p === 'mono' && container) container.style.background = ''; } catch {}
+    updateProfileUI();
+    rerenderAccordingToProfile();
+  }
+  function updateProfileUI() {
+    const profile = getProfile();
+    const mode = getUiThemeMode();
+    const isLight = mode === 'light';
+    if (profileBtn) {
+      profileBtn.textContent = profile === 'mono' ? 'Профиль: Ч/Б' : 'Профиль: Цветной';
+      if (!isLight) {
+        profileBtn.disabled = true;
+        profileBtn.title = 'Профиль доступен только в светлой теме';
+      } else {
+        profileBtn.disabled = false;
+        profileBtn.title = 'Переключить профиль визуализации';
+      }
+    }
+    if (themeToggleBtn) {
+      if (profile === 'mono') {
+        themeToggleBtn.disabled = true;
+        themeToggleBtn.title = 'Смена темы интерфейса не поддерживается для выбранного профиля';
+      } else {
+        themeToggleBtn.disabled = false;
+        themeToggleBtn.title = (mode === 'light') ? 'Тёмная тема' : 'Светлая тема';
+      }
+    }
+    // Отключаем локальные настройки визуализации в профиле Ч/Б
+    if (themeBtn) {
+      if (profile === 'mono') {
+        themeBtn.disabled = true;
+        themeBtn.title = 'Настройки недоступны для выбранного профиля';
+      } else {
+        themeBtn.disabled = false;
+        themeBtn.title = 'Настройки отображения';
+      }
+    }
+  }
+  function bindProfileUI() {
+    if (profileBtn) profileBtn.addEventListener('click', () => { if (!profileBtn.disabled) setProfile(getProfile() === 'mono' ? 'color' : 'mono'); });
+    document.addEventListener('sg:theme-change', updateProfileUI);
+    updateProfileUI();
+  }
+
+  function cvssSumFromRaw(raw) {
+    try {
+      const p = raw && (raw.props || raw) || {};
+      const c = Number(p.cvss_C_score || 0);
+      const i = Number(p.cvss_I_score || 0);
+      const a = Number(p.cvss_A_score || 0);
+      let s = c + i + a;
+      if (!isFinite(s)) s = 0; if (s < 0) s = 0; if (s > 10) s = 10; return s;
+    } catch { return 0; }
+  }
+  function grayFromScore0to10(v) {
+    const s = Math.max(0, Math.min(10, Number(v) || 0));
+    const l = 92 - (s / 10) * 70; // 92% -> 22%
+    return `hsl(0, 0%, ${l.toFixed(1)}%)`;
+  }
+  function epssWidth(v) {
+    let e = Number(v || 0); if (!isFinite(e) || e < 0) e = 0; if (e > 1) e = 1; return 1.2 + 9.0 * e; // более заметная толщина
+  }
+  function shapeMono(group) {
+    switch (group) {
+      case 'Technique': return 'rectangle';
+      case 'CVE': return 'ellipse';
+      case 'CPE': return 'octagon';
+      case 'CWE': return 'diamond';
+      case 'CAPEC': return 'pentagon';
+      default: return 'ellipse';
+    }
+  }
+
+  function graphStyleForProfile(profile) {
+    const lblColor = labelColorFromCss();
+    const muted = mutedColorFromCss();
+    if (profile === 'mono') {
+      return [
+        { selector: 'node', style: {
+          'label': 'data(label)', 'color': ele => {
+            if (ele.data('group') === 'CVE') { const s = cvssSumFromRaw(ele.data('raw')); return (s > 6.7) ? '#ffffff' : '#111'; }
+            return lblColor;
+          }, 'font-size': 12,
+          'text-valign': 'center', 'text-halign': 'center', 'text-wrap': 'none',
+          'shape': ele => shapeMono(ele.data('group')),
+          'background-color': ele => {
+            const g = ele.data('group');
+            if (g === 'Technique') return '#ffffff';
+            if (g === 'CVE') { const sum = cvssSumFromRaw(ele.data('raw')); return grayFromScore0to10(sum); }
+            if (g === 'TacticGroup') return '#e7e9f0';
+            return '#dddddd';
+          },
+          'border-width': 1.2, 'border-color': '#7a8094',
+          'width': ele => (ele.data('group') === 'Technique' ? 50 : (ele.data('group') === 'CVE' ? 40 : 46)),
+          'height': ele => (ele.data('group') === 'Technique' ? 50 : (ele.data('group') === 'CVE' ? 40 : 46)),
+          'padding': 0
+        }},
+        { selector: 'node[group="TechLabel"]', style: { 'background-opacity': 0, 'border-width': 0, 'label': 'data(label)', 'font-size': 11, 'color': muted, 'text-halign': 'center', 'text-valign':'center', 'events': 'no' }},
+        { selector: 'node.sel', style: { 'border-width': 5, 'border-color': '#000000', 'z-index': 999 }},
+        { selector: 'node.neigh', style: { 'border-width': 2, 'border-color': '#9aa3b9' }},
+        { selector: 'edge', style: { 'curve-style': 'bezier', 'target-arrow-shape': 'none', 'line-color': '#9aa3b2', 'width': 1.2, 'opacity': 0.9 }},
+      ];
+    }
+    return [
+      { selector: 'node', style: {
+        'label': 'data(label)','color': lblColor,'font-size': 12,'text-valign':'center','text-halign':'center','text-wrap': 'none',
+        'background-color': ele => colorByGroup(ele.data('group')),'shape': 'ellipse','border-width': 1,'border-color': '#2a3052','width': 46,'height': 46,'padding': 0 }},
+      
+      { selector: 'node.sel', style: { 'border-width': 3, 'border-color': '#4f8cff', 'z-index': 999 }},
+      { selector: 'node.neigh', style: { 'border-width': 2, 'border-color': '#3b4775' }},
+      { selector: 'edge', style: { 'curve-style': 'bezier', 'target-arrow-shape': 'none', 'line-color': ele => edgeColor(ele.data('type')), 'width': 1.2, 'opacity': 0.85 }},
+    ];
+  }
+
+  function scenarioStyleForProfile(profile) {
+    const lblColor = labelColorFromCss();
+    const muted = mutedColorFromCss();
+    const isLightMode = (getUiThemeMode() === 'light');
+    if (profile === 'mono') {
+      return [
+        { selector: 'node', style: {
+          'label': 'data(label)','color': ele => {
+            if (ele.data('group') === 'CVE') { const s = Number(ele.data('cvss') || 0); return (s > 6.7) ? '#ffffff' : '#111'; }
+            return lblColor;
+          },'font-size': 12,'text-valign':'center','text-halign':'center','text-wrap':'none',
+          'shape': ele => shapeMono(ele.data('group')),
+          'background-color': ele => {
+            const g = ele.data('group');
+            if (g === 'Technique') return '#ffffff';
+            if (g === 'CVE') { const sum = Number(ele.data('cvss') || 0); return grayFromScore0to10(sum); }
+            if (g === 'TacticGroup') return '#e7e9f0';
+            return '#dddddd';
+          },
+          'border-width': 1.2, 'border-color': '#7a8094',
+          'width': ele => (ele.data('group') === 'Technique' ? 50 : (ele.data('group') === 'CVE' ? 40 : 46)),
+          'height': ele => (ele.data('group') === 'Technique' ? 50 : (ele.data('group') === 'CVE' ? 40 : 46)),
+          'padding': 0
+        }},
+        { selector: 'node[group="TechLabel"]', style: { 'background-opacity': 0, 'border-width': 0, 'label': 'data(label)', 'font-size': 11, 'color': muted, 'text-halign': 'center', 'text-valign':'center', 'events': 'no' }},
+        { selector: 'node[group="TacticGroup"]', style: { 'shape': 'round-rectangle', 'background-color':'#e7e9f0', 'background-opacity': 1, 'label': 'data(label)', 'text-valign': 'top', 'text-halign':'center', 'border-color': '#bfc6d8', 'border-width': 1, 'padding': 14, 'color': muted }},
+        { selector: 'node.sel', style: { 'border-width': 5, 'border-color':'#000000', 'z-index': 999 }},
+        { selector: 'node.neigh', style: { 'border-width': 2, 'border-color': '#9aa3b9' }},
+        { selector: 'edge', style: { 'curve-style':'bezier','target-arrow-shape':'none','line-color':'#9aa3b2','width': 1.2,'opacity': 0.9 }},
+        { selector: 'edge[type="SC_TECH_TO_CVE"]', style: { 'line-color':'#9aa3b2', 'width': ele => epssWidth(ele.data('epss') || ele.data('EPSS') || 0) }},
+        { selector: 'edge[type="SC_STEP"]', style: { 'target-arrow-shape': 'triangle', 'target-arrow-color': '#9aa3b2' }},
+        { selector: 'edge[type="SC_GROUP"]', style: { 'target-arrow-shape': 'triangle', 'target-arrow-color': '#9aa3b2' }},
+        { selector: 'edge[type="SC_GROUP_LINK"]', style: { 'target-arrow-shape': 'triangle', 'target-arrow-color': '#9aa3b2' }},
+      ];
+    }
+    return [
+      { selector: 'node', style: {
+        'label': 'data(label)',
+        'color': lblColor,
+        'font-size': 12,
+        'text-valign': 'center',
+        'text-halign': 'center',
+        'text-wrap': 'none',
+        'background-color': ele => colorByGroup(ele.data('group')),
+        'shape': 'ellipse',
+        'border-width': 1,
+        'border-color': '#2a3052',
+        'width': 46,
+        'height': 46,
+        'padding': 0
+      }},
+      { selector: 'node[group="TechLabel"]', style: { 'background-opacity': 0, 'border-width': 0, 'label': 'data(label)', 'font-size': 11, 'color': muted, 'text-halign': 'center', 'text-valign':'center', 'events': 'no' }},
+      // Стиль карточек тактик
+      { selector: 'node[group="TacticGroup"]', style: {
+        'shape':'round-rectangle',
+        'background-color': isLightMode ? '#3b6eea' : '#141939',
+        'background-opacity': isLightMode ? 0.14 : 0.22,
+        'label':'data(label)',
+        'text-valign':'top','text-halign':'center','border-color':'#3b4775','border-width':1,'padding':14
+      }},
+      { selector: 'node.sel', style: { 'border-width': 3, 'border-color': '#4f8cff', 'z-index': 999 }},
+      { selector: 'node.neigh', style: { 'border-width': 2, 'border-color': '#3b4775' }},
+      { selector: 'edge', style: { 'curve-style': 'bezier', 'target-arrow-shape': 'none', 'line-color': ele => edgeColor(ele.data('type')), 'width': 1.2, 'opacity': 0.85 }},
+      // Стрелки от CVE к следующей тактике
+      { selector: 'edge[type="SC_GROUP"]', style: { 'target-arrow-shape': 'triangle', 'target-arrow-color': '#8e44ad' }},
+      { selector: 'edge[type="SC_GROUP_LINK"]', style: { 'target-arrow-shape': 'triangle', 'target-arrow-color': '#7f8c8d' }},
+    ];
+  }
+
+  function rerenderAccordingToProfile() {
+    if (isScenarioView) {
+      if (currentScenarioId === 'PRIMARY') {
+        if (lastMega) renderPrimaryOnCanvas(lastMega);
+      } else if (currentScenarioData) {
+        renderScenario(currentScenarioData);
+      }
+    } else {
+      if (!restoreSnapshotFromLS()) restoreSnapshotIfAny();
+    }
+  }
+
+  // Работа с темой
   function loadTheme() {
     try { const raw = localStorage.getItem(LS_THEME); if (!raw) return null; const t = JSON.parse(raw); if (t && typeof t === 'object') return t; } catch {}
     return null;
   }
   function saveTheme(theme) {
     try {
-      if (theme && (theme.nodeColors || theme.canvas || theme.labels || theme.edgeColors)) localStorage.setItem(LS_THEME, JSON.stringify(theme));
+      if (theme && (theme.nodeColors || theme.canvas || theme.labels)) localStorage.setItem(LS_THEME, JSON.stringify(theme));
       else localStorage.removeItem(LS_THEME);
     } catch {}
   }
   function applyTheme(theme, opts={ save:false }) {
-    // Canvas background
+    // В ч/б профиле пользовательские цвета не применяются
+    if (getProfile() === 'mono') {
+      if (opts.save) saveTheme(theme);
+      return;
+    }
+    // Фон холста
     if (container) {
       if (theme && theme.canvas) container.style.background = theme.canvas; else container.style.background = '';
     }
     if (cy) {
       const nodes = cy.nodes();
-      // Label color
+      // Цвет надписей
       const labelColor = theme && theme.labels ? String(theme.labels) : null;
       if (labelColor) {
         nodes.forEach(n => { n.style('color', labelColor); });
       } else {
         nodes.forEach(n => { n.removeStyle('color'); });
       }
-      // Per-group node colors
+      // Цвета узлов по группам
       const colors = (theme && theme.nodeColors) || {};
       nodes.forEach(n => {
         const g = n.data('group');
@@ -116,22 +323,19 @@
         else n.removeStyle('background-color');
       });
 
-      // Edge colors by type
-      const ecolors = (theme && theme.edgeColors) || {};
-      const edges = cy.edges();
-      edges.forEach(e => {
-        const t = e.data('type');
-        const c = ecolors[t];
-        if (c) {
-          e.style('line-color', c);
-          e.style('target-arrow-color', c);
-          e.style('source-arrow-color', c);
-        } else {
-          e.removeStyle('line-color');
-          e.removeStyle('target-arrow-color');
-          e.removeStyle('source-arrow-color');
-        }
-      });
+      // Цвет рёбер синхронизируем с цветом соответствующих узлов
+      try {
+        const edges = cy.edges();
+        edges.forEach(e => {
+          const t = e.data('type');
+          const c = edgeColorFromTheme(t, theme);
+          if (c) e.style('line-color', c);
+          // стрелки меняем только для групповых связей сценариев (остальные без стрелок)
+          if (t === 'SC_GROUP' || t === 'SC_GROUP_LINK') {
+            e.style('target-arrow-color', t === 'SC_GROUP_LINK' ? '#7f8c8d' : c);
+          }
+        });
+      } catch {}
     }
     if (opts.save) saveTheme(theme);
   }
@@ -145,15 +349,6 @@
     try { if (themeNodeInputs.CWE) themeNodeInputs.CWE.value = cols.CWE || colorByGroup('CWE'); } catch {}
     try { if (themeNodeInputs.CAPEC) themeNodeInputs.CAPEC.value = cols.CAPEC || colorByGroup('CAPEC'); } catch {}
     try { if (themeNodeInputs.Technique) themeNodeInputs.Technique.value = cols.Technique || colorByGroup('Technique'); } catch {}
-    const ecols = (saved.edgeColors || {});
-    try { if (themeEdgeInputs.AFFECTS) themeEdgeInputs.AFFECTS.value = ecols.AFFECTS || edgeColor('AFFECTS'); } catch {}
-    try { if (themeEdgeInputs.CWE_TO_CVE) themeEdgeInputs.CWE_TO_CVE.value = ecols.CWE_TO_CVE || edgeColor('CWE_TO_CVE'); } catch {}
-    try { if (themeEdgeInputs.CAPEC_TO_CWE) themeEdgeInputs.CAPEC_TO_CWE.value = ecols.CAPEC_TO_CWE || edgeColor('CAPEC_TO_CWE'); } catch {}
-    try { if (themeEdgeInputs.CAPEC_PARENT_TO_CAPEC_CHILD) themeEdgeInputs.CAPEC_PARENT_TO_CAPEC_CHILD.value = ecols.CAPEC_PARENT_TO_CAPEC_CHILD || edgeColor('CAPEC_PARENT_TO_CAPEC_CHILD'); } catch {}
-    try { if (themeEdgeInputs.CAPEC_TO_TECHNIQUE) themeEdgeInputs.CAPEC_TO_TECHNIQUE.value = ecols.CAPEC_TO_TECHNIQUE || edgeColor('CAPEC_TO_TECHNIQUE'); } catch {}
-    try { if (themeEdgeInputs.SC_STEP) themeEdgeInputs.SC_STEP.value = ecols.SC_STEP || edgeColor('SC_STEP'); } catch {}
-    try { if (themeEdgeInputs.SC_TECH_TO_CVE) themeEdgeInputs.SC_TECH_TO_CVE.value = ecols.SC_TECH_TO_CVE || edgeColor('SC_TECH_TO_CVE'); } catch {}
-    try { if (themeEdgeInputs.SC_GROUP) themeEdgeInputs.SC_GROUP.value = ecols.SC_GROUP || edgeColor('SC_GROUP'); } catch {}
     try { themeBackdrop.removeAttribute('hidden'); themeBackdrop.classList.add('open'); } catch {}
   }
   function closeThemeModal() {
@@ -173,17 +368,7 @@
         CAPEC: themeNodeInputs.CAPEC?.value,
         Technique: themeNodeInputs.Technique?.value,
       };
-      const edgeColors = {
-        AFFECTS: themeEdgeInputs.AFFECTS?.value,
-        CWE_TO_CVE: themeEdgeInputs.CWE_TO_CVE?.value,
-        CAPEC_TO_CWE: themeEdgeInputs.CAPEC_TO_CWE?.value,
-        CAPEC_PARENT_TO_CAPEC_CHILD: themeEdgeInputs.CAPEC_PARENT_TO_CAPEC_CHILD?.value,
-        CAPEC_TO_TECHNIQUE: themeEdgeInputs.CAPEC_TO_TECHNIQUE?.value,
-        SC_STEP: themeEdgeInputs.SC_STEP?.value,
-        SC_TECH_TO_CVE: themeEdgeInputs.SC_TECH_TO_CVE?.value,
-        SC_GROUP: themeEdgeInputs.SC_GROUP?.value,
-      };
-      const theme = { canvas: themeCanvasInput?.value, labels: themeLabelInput?.value, nodeColors, edgeColors };
+      const theme = { canvas: themeCanvasInput?.value, labels: themeLabelInput?.value, nodeColors };
       applyTheme(theme, { save:true }); closeThemeModal();
     });
     const preview = () => {
@@ -194,26 +379,15 @@
         CAPEC: themeNodeInputs.CAPEC?.value,
         Technique: themeNodeInputs.Technique?.value,
       };
-      const edgeColors = {
-        AFFECTS: themeEdgeInputs.AFFECTS?.value,
-        CWE_TO_CVE: themeEdgeInputs.CWE_TO_CVE?.value,
-        CAPEC_TO_CWE: themeEdgeInputs.CAPEC_TO_CWE?.value,
-        CAPEC_PARENT_TO_CAPEC_CHILD: themeEdgeInputs.CAPEC_PARENT_TO_CAPEC_CHILD?.value,
-        CAPEC_TO_TECHNIQUE: themeEdgeInputs.CAPEC_TO_TECHNIQUE?.value,
-        SC_STEP: themeEdgeInputs.SC_STEP?.value,
-        SC_TECH_TO_CVE: themeEdgeInputs.SC_TECH_TO_CVE?.value,
-        SC_GROUP: themeEdgeInputs.SC_GROUP?.value,
-      };
-      const theme = { canvas: themeCanvasInput?.value, labels: themeLabelInput?.value, nodeColors, edgeColors };
+      const theme = { canvas: themeCanvasInput?.value, labels: themeLabelInput?.value, nodeColors };
       applyTheme(theme, { save:false });
     };
     if (themeCanvasInput) themeCanvasInput.addEventListener('input', preview);
     if (themeLabelInput) themeLabelInput.addEventListener('input', preview);
     Object.values(themeNodeInputs).forEach(inp => { if (inp) inp.addEventListener('input', preview); });
-    Object.values(themeEdgeInputs).forEach(inp => { if (inp) inp.addEventListener('input', preview); });
   }
 
-  // === Tooltip for node hover ===
+  // Подсказка при наведении на узел
   let tooltipEl = null;
   let lastMouse = { x: 0, y: 0 };
   function ensureTooltip() {
@@ -283,6 +457,49 @@
     cy.on('mouseout', 'node', () => hideTooltip());
   }
 
+  // Привязка подписей TechLabel к позициям техник
+  let followTechLabelsHandler = null;
+  function syncTechLabels() {
+    if (!cy) return;
+    const labels = cy.nodes('[group="TechLabel"]');
+    if (!labels || labels.length === 0) return;
+    labels.forEach(lbl => {
+      const id = String(lbl.id() || '');
+      const tid = id.startsWith('tl_') ? id.slice(3) : null;
+      if (!tid) return;
+      const tnode = cy.getElementById(tid);
+      if (!tnode || tnode.length === 0) return;
+      const tpos = tnode.position();
+      let dx = lbl.data('dx'); let dy = lbl.data('dy');
+      if (typeof dx !== 'number' || typeof dy !== 'number') {
+        // Первичная инициализация смещений по текущим позициям
+        const lpos = lbl.position();
+        dx = lpos.x - tpos.x; dy = lpos.y - tpos.y;
+        lbl.data('dx', dx); lbl.data('dy', dy);
+      }
+      lbl.position({ x: tpos.x + dx, y: tpos.y + dy });
+    });
+  }
+  function bindTechLabelFollow() {
+    if (!cy) return;
+    // Снимем прежнюю привязку, если была
+    if (followTechLabelsHandler) {
+      try { cy.off('position', 'node[group="Technique"]', followTechLabelsHandler); } catch {}
+    }
+    followTechLabelsHandler = (evt) => {
+      const n = evt.target; const tid = String(n.id());
+      const lbl = cy.getElementById('tl_' + tid);
+      if (!lbl || lbl.length === 0) return;
+      let dx = lbl.data('dx'); let dy = lbl.data('dy');
+      if (typeof dx !== 'number' || typeof dy !== 'number') { dx = 0; dy = -30; }
+      const p = n.position();
+      lbl.position({ x: p.x + dx, y: p.y + dy });
+    };
+    cy.on('position', 'node[group="Technique"]', followTechLabelsHandler);
+    // Начальная синхронизация
+    syncTechLabels();
+  }
+
   const debounce = (fn, ms=250) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
 
   function saveForm() {
@@ -314,7 +531,7 @@
   }
   const saveSnapshotDebounced = debounce(trySaveSnapshot, 400);
 
-  // === Loading overlay on graph canvas ===
+  // Оверлей загрузки на холсте графа
   function ensureLoadingOverlay() {
     if (!container) return null;
     let overlay = container.querySelector('.graph-loading');
@@ -331,7 +548,7 @@
       const ov = ensureLoadingOverlay();
       if (container) container.classList.add('is-loading');
       if (drawBtn) drawBtn.disabled = true;
-      // Also mark busy for a11y
+      // Также помечаем «занято» для доступности
       if (container) container.setAttribute('aria-busy', 'true');
     } catch {}
   }
@@ -392,39 +609,7 @@
       cy = cytoscape({
         container,
         elements,
-        style: [
-          { selector: 'node', style: {
-            'label': 'data(label)',
-            'color': lblColor,
-            'font-size': 12,
-            'text-valign': 'center',
-            'text-halign': 'center',
-            'text-wrap': 'none',
-            'background-color': ele => colorByGroup(ele.data('group')),
-            'shape': 'ellipse',
-            'border-width': 1,
-            'border-color': '#2a3052',
-            'width': 46,
-            'height': 46,
-            'padding': 0
-          }},
-          { selector: 'node.sel', style: {
-            'border-width': 3,
-            'border-color': '#4f8cff',
-            'z-index': 999
-          }},
-          { selector: 'node.neigh', style: {
-            'border-width': 2,
-            'border-color': '#3b4775'
-          }},
-          { selector: 'edge', style: {
-            'curve-style': 'bezier',
-            'target-arrow-shape': 'none',
-            'line-color': ele => edgeColor(ele.data('type')),
-            'width': 1.2,
-            'opacity': 0.85
-          }},
-        ],
+        style: graphStyleForProfile(getProfile()),
         layout: { name: 'preset' }
       });
       if (snap.pan) cy.pan(snap.pan);
@@ -438,6 +623,7 @@
       });
       cy.on('tap', (evt) => { if (evt.target === cy) { cy.elements().removeClass('sel neigh'); renderInspector(null); } });
       bindTooltipEvents();
+      bindTechLabelFollow();
       const th1 = loadTheme(); if (th1) applyTheme(th1);
       cy.on('free zoom pan', saveSnapshotDebounced);
       return true;
@@ -457,39 +643,7 @@
       cy = cytoscape({
         container,
         elements,
-        style: [
-          { selector: 'node', style: {
-            'label': 'data(label)',
-            'color': lblColor,
-            'font-size': 12,
-            'text-valign': 'center',
-            'text-halign': 'center',
-            'text-wrap': 'none',
-            'background-color': ele => colorByGroup(ele.data('group')),
-            'shape': 'ellipse',
-            'border-width': 1,
-            'border-color': '#2a3052',
-            'width': 46,
-            'height': 46,
-            'padding': 0
-          }},
-          { selector: 'node.sel', style: {
-            'border-width': 3,
-            'border-color': '#4f8cff',
-            'z-index': 999
-          }},
-          { selector: 'node.neigh', style: {
-            'border-width': 2,
-            'border-color': '#3b4775'
-          }},
-          { selector: 'edge', style: {
-            'curve-style': 'bezier',
-            'target-arrow-shape': 'none',
-            'line-color': ele => edgeColor(ele.data('type')),
-            'width': 1.2,
-            'opacity': 0.85
-          }},
-        ],
+        style: graphStyleForProfile(getProfile()),
         layout: { name: 'preset' }
       });
       if (snap.pan) cy.pan(snap.pan);
@@ -505,6 +659,7 @@
       // Повторно включаем автоснапшот только для обычного графа
       cy.on('free zoom pan', saveSnapshotDebounced);
       bindTooltipEvents();
+      bindTechLabelFollow();
       const th2 = loadTheme(); if (th2) applyTheme(th2);
       isScenarioView = false;
       return true;
@@ -522,18 +677,41 @@
     }
   }
 
-  function edgeColor(type) {
+  // Возвращает цвет узла с учётом пользовательской темы (если задана)
+  function resolvedNodeColor(group, theme) {
+    try {
+      const t = theme || loadTheme() || {};
+      const nc = (t.nodeColors || {})[group];
+      return nc || colorByGroup(group);
+    } catch { return colorByGroup(group); }
+  }
+
+  // Цвет ребра на основе требуемой «ведущей» стороны
+  function edgeColorFromTheme(type, theme) {
     switch (type) {
-      case 'AFFECTS': return '#c0392b';
-      case 'CWE_TO_CVE': return '#d35400';
-      case 'CAPEC_TO_CWE': return '#2980b9';
-      case 'CAPEC_PARENT_TO_CAPEC_CHILD': return '#7f8c8d';
-      case 'CAPEC_TO_TECHNIQUE': return '#27ae60';
-      case 'SC_STEP': return '#7f8c8d';
+      // Граф CPE
+      case 'AFFECTS':
+        return resolvedNodeColor('CVE', theme);
+      case 'CWE_TO_CVE':
+        return resolvedNodeColor('CVE', theme);
+      case 'CAPEC_TO_CWE':
+        return resolvedNodeColor('CAPEC', theme);
+      case 'CAPEC_PARENT_TO_CAPEC_CHILD': // CAPEC -> CAPEC
+        return resolvedNodeColor('CAPEC', theme);
+      case 'CAPEC_TO_TECHNIQUE': 
+        return resolvedNodeColor('Technique', theme);
+      // Сценарии оставляем фиксированными цветами
+      case 'SC_STEP': return '#8e44ad';
       case 'SC_TECH_TO_CVE': return '#8e44ad';
-      case 'SC_GROUP': return '#7f8c8d';
+      case 'SC_GROUP': return '#8e44ad';
       default: return '#7f8c8d';
     }
+  }
+
+  function edgeColor(type) {
+    // Используем сохранённую тему для соответствия цвету узла
+    const th = loadTheme();
+    return edgeColorFromTheme(type, th);
   }
 
   function renderInspector(nodeData) {
@@ -604,7 +782,7 @@
     if (!col || col.length === 0) return;
     col.addClass('sel');
     col.closedNeighborhood().difference(col).addClass('neigh');
-    // Не сохраняем подсветку в снимок; и тем более не перетираем снимок, когда отображается сценарий
+    // Не сохраняем подсветку в снимок; не перетираем снимок, когда отображается сценарий
     if (!isScenarioView) trySaveSnapshot();
   }
 
@@ -670,7 +848,7 @@
       const btnShow = document.createElement('button');
       btnShow.textContent = 'Отобразить';
 
-      // helpers to unify button state
+      // Вспомогательные функции для унификации состояния кнопок
       const setShowBtn = (btn, sel) => {
         if (!btn) return;
         btn.textContent = sel ? 'Назад к графу' : 'Отобразить';
@@ -690,6 +868,7 @@
           setShowBtn(btnShow, true);
           isScenarioView = true;
           currentScenarioId = sc.id;
+          currentScenarioData = sc;
         } else {
           if (currentScenarioId === sc.id) {
             // Выходим из сценария
@@ -698,6 +877,7 @@
               resetAllShowBtns();
               isScenarioView = false;
               currentScenarioId = null;
+              currentScenarioData = null;
             }
           } else {
             // Переключаемся на другой сценарий без возврата к графу
@@ -705,6 +885,7 @@
             resetAllShowBtns();
             setShowBtn(btnShow, true);
             currentScenarioId = sc.id;
+            currentScenarioData = sc;
           }
         }
       });
@@ -751,56 +932,14 @@
 
   function renderScenario(sc) {
     if (!window.cytoscape) return;
-    const elements = buildScenarioElements(sc);
+    const profile = getProfile();
+    const elements = (profile === 'mono') ? buildScenarioElementsMono(sc) : buildScenarioElements(sc);
     if (cy) { cy.destroy(); cy = null; }
     const lblColor = labelColorFromCss();
-    const mutColor = mutedColorFromCss();
     cy = cytoscape({
       container,
       elements,
-      style: [
-        { selector: 'node', style: {
-          'label': 'data(label)',
-          'color': lblColor,
-          'font-size': 12,
-          'text-valign': 'center',
-          'text-halign': 'center',
-          'text-wrap': 'none',
-          'background-color': ele => colorByGroup(ele.data('group')),
-          'shape': 'ellipse',
-          'border-width': 1,
-          'border-color': '#2a3052',
-          'width': 46,
-          'height': 46,
-          'padding': 0
-        }},
-        { selector: 'node[group="TechLabel"]', style: {
-          'background-opacity': 0,
-          'border-width': 0,
-          'label': 'data(label)',
-          'font-size': 11,
-          'color': mutColor,
-          'text-halign': 'center',
-          'text-valign': 'center',
-          'events': 'no'
-        }},
-        { selector: 'node.sel', style: {
-          'border-width': 3,
-          'border-color': '#4f8cff',
-          'z-index': 999
-        }},
-        { selector: 'node.neigh', style: {
-          'border-width': 2,
-          'border-color': '#3b4775'
-        }},
-        { selector: 'edge', style: {
-          'curve-style': 'bezier',
-          'target-arrow-shape': 'none',
-          'line-color': ele => edgeColor(ele.data('type')),
-          'width': 1.2,
-          'opacity': 0.85
-        }},
-      ],
+      style: scenarioStyleForProfile(profile),
       layout: { name: 'preset', fit: true, padding: 20 }
     });
     cy.on('tap', 'node', (evt) => {
@@ -812,6 +951,7 @@
     });
     cy.on('tap', (evt) => { if (evt.target === cy) { cy.elements().removeClass('sel neigh'); renderInspector(null); } });
     bindTooltipEvents();
+    bindTechLabelFollow();
     // В режиме сценария снимок не сохраняем, чтобы не перетирать исходный граф в LS
     const th3 = loadTheme(); if (th3) applyTheme(th3);
   }
@@ -821,7 +961,7 @@
     const TECH_Y = 80;
     const TECH_LABEL_Y = TECH_Y - 30;
     const CVE_START_Y = 220;
-    const CVE_GAP_Y = 38;
+    const CVE_GAP_Y = 46;
     const CVE_SPREAD_X = 26; // горизонтальный разнос CVE вокруг техники
     const elements = [];
     const steps = sc.steps || [];
@@ -836,17 +976,19 @@
       const tid = String(t.id);
       techPos.set(tid, { x, y: TECH_Y });
       elements.push({ data: { id: tid, label: 'Tech', group: 'Technique', raw: t }, position: { x, y: TECH_Y } });
-      // Label above technique with its identifier
+      // Надпись над техникой с её идентификатором (для обоих профилей)
       const tIdLabel = (t.props && t.props.identifier) ? String(t.props.identifier) : '';
       if (tIdLabel) {
         const lid = `tl_${tid}`;
         elements.push({ data: { id: lid, label: tIdLabel, group: 'TechLabel' }, position: { x, y: TECH_LABEL_Y } });
       }
-      if (i > 0) {
-        const prev = steps[i - 1].technique;
-        if (prev && prev.id) {
-          const eid = `sc_step_${prev.id}_${t.id}`;
-          elements.push({ data: { id: eid, source: String(prev.id), target: String(t.id), type: 'SC_STEP' } });
+      // Цветной профиль: добавим тонкую «дорогу» между соседними техниками
+      if (i < steps.length - 1) {
+        const nextT = steps[i+1].technique;
+        if (nextT && nextT.id) {
+          const nextTid = String(nextT.id);
+          const eid = `sc_tt_${tid}_${nextTid}`;
+          elements.push({ data: { id: eid, source: tid, target: nextTid, type: 'SC_GROUP_LINK' } });
         }
       }
     }
@@ -908,30 +1050,79 @@
     }
     }
 
-    // Рёбра техника -> CVE (без дублей)
+    // Рёбра техника -> CVE + CVE -> следующая техника
     const edgeIds = new Set();
     for (let i = 0; i < steps.length; i++) {
       const st = steps[i];
       const t = st.technique; if (!t || !t.id) continue;
       const tid = String(t.id);
+      const nextT = (i < steps.length - 1) ? steps[i+1].technique : null;
+      const nextTid = (nextT && nextT.id) ? String(nextT.id) : null;
       const cves = Array.isArray(st.cves) ? st.cves : [];
       for (const cv of cves) {
         if (!cv || !cv.id) continue;
         const cid = String(cv.id);
-        const eid = `sc_tc_${tid}_${cid}`;
-        if (edgeIds.has(eid)) continue;
-        edgeIds.add(eid);
-        elements.push({ data: { id: eid, source: tid, target: cid, type: 'SC_TECH_TO_CVE' } });
+        const eid1 = `sc_tc_${tid}_${cid}`;
+        if (!edgeIds.has(eid1)) { edgeIds.add(eid1); elements.push({ data: { id: eid1, source: tid, target: cid, type: 'SC_TECH_TO_CVE' } }); }
+        if (nextTid) {
+          const eid2 = `sc_cv_${cid}_${nextTid}`;
+          if (!edgeIds.has(eid2)) { edgeIds.add(eid2); elements.push({ data: { id: eid2, source: cid, target: nextTid, type: 'SC_STEP' } }); }
+        }
+      }
+    }
+    
+    return elements;
+  }
+
+  // Монохромный сценарий, CVE вертикально справа от соответствующей техники
+  function buildScenarioElementsMono(sc) {
+    const GAP_X = 120;
+    const TECH_Y = 100;
+    // CVE располагаем по центру отрезка между текущей и следующей техникой
+    const CVE_OFFSET_X = GAP_X / 2;
+    const CVE_GAP_Y = 46;
+    const elements = [];
+    const steps = sc.steps || [];
+
+    const techPos = new Map();
+    for (let i = 0; i < steps.length; i++) {
+      const st = steps[i]; const t = st.technique; if (!t || !t.id) continue;
+      const tid = String(t.id); const x = i * GAP_X; const y = TECH_Y;
+      techPos.set(tid, { x, y });
+      elements.push({ data: { id: tid, label: 'Tech', group: 'Technique', raw: t }, position: { x, y } });
+      // Надпись с идентификатором техники
+      const tIdLabel = (t.props && t.props.identifier) ? String(t.props.identifier) : '';
+      if (tIdLabel) {
+        const lid = `tl_${tid}`;
+        elements.push({ data: { id: lid, label: tIdLabel, group: 'TechLabel' }, position: { x, y: y - 30 } });
+      }
+    }
+
+    // Для каждой техники отдельная колонка CVE справа
+    for (let i = 0; i < steps.length; i++) {
+      const st = steps[i]; const t = st.technique; if (!t || !t.id) continue;
+      const tid = String(t.id); const pos = techPos.get(tid); if (!pos) continue;
+      const x = pos.x + CVE_OFFSET_X;
+      const list = Array.isArray(st.cves) ? st.cves : [];
+      for (let j = 0; j < list.length; j++) {
+        const cv = list[j]; if (!cv || !cv.id) continue; const cid = String(cv.id);
+        const y = pos.y + (j - (list.length-1)/2) * CVE_GAP_Y;
+        const id = `cve_${tid}_${cid}`;
+        const cvss = cvssSumFromRaw(cv);
+        elements.push({ data:{ id, label:'CVE', group:'CVE', raw: cv, cvss: cvss }, position:{ x, y } });
+        const eid = `tc_${tid}_${cid}`; const epss = Number((cv.props && cv.props.epss) || 0);
+        elements.push({ data:{ id:eid, source: tid, target: id, type:'SC_TECH_TO_CVE', epss: epss } });
+        // связь CVE -> следующая техника (если есть)
+        if (i < steps.length - 1) {
+          const nextTid = String(steps[i+1].technique.id);
+          const e2 = `cv_${tid}_${cid}_to_${nextTid}`;
+          elements.push({ data:{ id: e2, source: id, target: nextTid, type: 'SC_STEP' } });
+        }
       }
     }
 
     return elements;
   }
-
-  // === Сохранение/восстановление кэша сценариев в localStorage ===
-  function trySaveScenariosCache(params, data) { /* no-op: сценарии больше не кэшируем */ }
-
-  function restoreScenariosIfAny() { return false; }
 
   async function draw() {
     const cpe = (cpeInput.value || '').trim();
@@ -985,39 +1176,7 @@
       cy = cytoscape({
         container,
         elements,
-        style: [
-          { selector: 'node', style: {
-            'label': 'data(label)',
-            'color': lblColor2,
-            'font-size': 12,
-            'text-valign': 'center',
-            'text-halign': 'center',
-            'text-wrap': 'none',
-            'background-color': ele => colorByGroup(ele.data('group')),
-            'shape': 'ellipse',
-            'border-width': 1,
-            'border-color': '#2a3052',
-            'width': 46,
-            'height': 46,
-            'padding': 0
-          }},
-          { selector: 'node.sel', style: {
-            'border-width': 3,
-            'border-color': '#4f8cff',
-            'z-index': 999
-          }},
-          { selector: 'node.neigh', style: {
-            'border-width': 2,
-            'border-color': '#3b4775'
-          }},
-          { selector: 'edge', style: {
-            'curve-style': 'bezier',
-            'target-arrow-shape': 'none',
-            'line-color': ele => edgeColor(ele.data('type')),
-            'width': 1.2,
-            'opacity': 0.85
-          }},
-        ],
+        style: graphStyleForProfile(getProfile()),
         layout: { name: 'cose', animate: false, fit: true, padding: 20 }
       });
 
@@ -1064,11 +1223,13 @@
   restoreScForm();
   applyViewModeAvailability();
   initInspectorCollapse();
-  // Theme UI and initial apply
+  // Интерфейс темы и начальное применение
   bindThemeUI();
   const initTheme = loadTheme(); if (initTheme) applyTheme(initTheme);
+  // Интерфейс переключения профиля
+  bindProfileUI();
 
-  // React on UI theme changes: update label colors if not overridden by graph theme
+  // Реакция на смену темы UI: обновляем цвета надписей, если они не переопределены темой графа
   document.addEventListener('sg:theme-change', () => {
     try {
       const saved = loadTheme();
@@ -1079,6 +1240,18 @@
           cy.nodes().forEach(n => { n.style('color', lbl); });
         }
         cy.nodes('[group="TechLabel"]').forEach(n => { n.style('color', mut); });
+        // Перекрашиваем карточки тактик в зависимости от текущей темы
+        if (getProfile() === 'color') {
+          const isLight = (getUiThemeMode() === 'light');
+          const bg = isLight ? '#3b6eea' : '#141939';
+          const op = isLight ? 0.14 : 0.22;
+          cy.nodes('[group="TacticGroup"]').forEach(n => {
+            n.style('background-color', bg);
+            n.style('background-opacity', op);
+            n.style('border-color', '#3b4775');
+            n.style('color', mut);
+          });
+        }
       }
     } catch {}
   });
@@ -1090,13 +1263,14 @@
     clearScenariosBtn.addEventListener('click', () => {
       scenariosList.innerHTML = '';
       if (cy) { cy.elements().removeClass('sel neigh'); }
-      // Если сейчас отображается сценарий — вернёмся к исходному графу
+      // Если сейчас отображается сценарий, возврат к исходному графу
       if (isScenarioView) {
         restoreSnapshotFromLS();
         isScenarioView = false;
         currentScenarioId = null;
+        currentScenarioData = null;
       }
-      // Чистим кэш сценариев в LS, чтобы не переполнять
+      // Чистим кэш сценариев в LS чтобы не переполнять
       try { localStorage.removeItem(LS_SCEN); } catch {}
     });
   }
@@ -1106,12 +1280,12 @@
   if (showAllCves) showAllCves.addEventListener('change', () => {
     if (isScenarioView && currentScenarioId === 'PRIMARY') {
       if (showAllCves.checked) showPrimaryAllCVEs();
-      else { cy.elements("edge[type='SC_TECH_TO_CVE']").remove(); cy.elements("node[group='CVE']").remove(); }
+      else { try { renderPrimaryOnCanvas(lastMega || []); } catch { cy.elements("edge[type='SC_TECH_TO_CVE']").remove(); cy.elements("node[group='CVE']").remove(); } }
       const th = loadTheme(); if (th) applyTheme(th);
     }
   });
 
-  // ===== Первичный сценарий (primary) — визуализация групп тактик =====
+  // первичный сценарий (primary) — визуализация групп тактик
   function renderPrimaryCard(data) {
     const frag = document.createDocumentFragment();
     const box = document.createElement('div'); box.className = 'scenario primary';
@@ -1123,6 +1297,7 @@
     try { btnShow.style.width = '220px'; } catch {}
     const mega = Array.isArray(data.mega) ? data.mega : [];
     buildPrimaryStepIndex(mega);
+    lastMega = mega;
     const setBtn = (sel) => { btnShow.textContent = sel ? 'Назад к графу' : 'Отобразить'; btnShow.classList.toggle('selected', !!sel); };
     btnShow.addEventListener('click', () => {
       if (!isScenarioView) {
@@ -1142,7 +1317,7 @@
     frag.appendChild(box);
     scenariosList.innerHTML = ''; scenariosList.appendChild(frag);
 
-    // Если уже открыт первичный сценарий и пользователь заново сгенерировал — не возвращаемся к графу, а перерисовываем
+    // Если уже открыт первичный сценарий и пользователь заново сгенерировал, не возвращаемся к графу, а перерисовываем
     if (isScenarioView && currentScenarioId === 'PRIMARY') {
       setBtn(true);
       renderPrimaryOnCanvas(mega);
@@ -1166,33 +1341,33 @@
     cy = cytoscape({
       container,
       elements,
-      style: [
-        { selector: 'node', style: {
-          'label': 'data(label)','color':'#e5e7ef','font-size':12,'text-valign':'center','text-halign':'center','text-wrap':'none',
-          'background-color': ele => colorByGroup(ele.data('group')),'shape':'ellipse','border-width':1,'border-color':'#2a3052','width':46,'height':46,'padding':0 }},
-        { selector: 'node[group="TacticGroup"]', style: {
-          'shape':'round-rectangle','background-color':'#141939','background-opacity':0.22,'label':'data(label)',
-          'text-valign':'top','text-halign':'center','border-color':'#3b4775','border-width':1,'padding':14 }},
-        { selector: 'node.sel', style: { 'border-width':3,'border-color':'#4f8cff','z-index':999 }},
-        { selector: 'node.neigh', style: { 'border-width':2,'border-color':'#3b4775' }},
-        { selector: 'edge', style: { 'curve-style':'bezier','target-arrow-shape':'none','line-color': ele => edgeColor(ele.data('type')),'width':1.2,'opacity':0.85 }},
-        { selector: 'edge[type="SC_GROUP"]', style: { 'target-arrow-shape': 'triangle', 'target-arrow-color': '#7f8c8d' }},
-      ],
+      style: scenarioStyleForProfile(getProfile()),
       layout: { name: 'preset', fit: true, padding: 20 }
     });
     cy.on('tap', 'node', (evt) => {
       const ele = evt.target;
       const grp = ele.data('group');
-      if (grp === 'TacticGroup') {
-        if (showAllCves && showAllCves.checked) {
-          showPrimaryAllCVEs();
-        } else {
-          showPrimaryGroupDetails(ele);
-        }
+      if (showAllCves && showAllCves.checked) {
+        showPrimaryAllCVEs();
+      } else if (grp === 'TacticGroup') {
+        // Всегда сначала восстанавливаем прямые связи между тактиками,
+        // затем скрываем только у выбранной тактики
+        clearPrimaryCVEs(true);
+        showPrimaryGroupDetails(ele);
+      } else if (grp === 'Technique') {
+        // То же поведение при выборе техники: вернуть связи, затем скрыть только у её тактики
+        clearPrimaryCVEs(true);
+        addCVEsForTechnique(ele);
       }
       cy.elements().removeClass('sel neigh'); ele.addClass('sel'); ele.closedNeighborhood().difference(ele).addClass('neigh'); renderInspector(ele);
     });
-    cy.on('tap', (evt) => { if (evt.target === cy) { cy.elements().removeClass('sel neigh'); renderInspector(null); } });
+    cy.on('tap', (evt) => {
+      if (evt.target === cy) {
+        if (!(showAllCves && showAllCves.checked)) clearPrimaryCVEs(true);
+        cy.elements().removeClass('sel neigh');
+        renderInspector(null);
+      }
+    });
     bindTooltipEvents();
 
     // При включённом флаге — сразу показать все CVE
@@ -1203,16 +1378,16 @@
   }
 
   function buildPrimaryElements(mega) {
-    const COL_GAP=110, ROW_GAP=70, TOP_Y=80; const elements=[]; const cols=(mega||[]).slice().sort((a,b)=>(a.tactic_order||0)-(b.tactic_order||0));
+    const COL_GAP=160, ROW_GAP=70, TOP_Y=80, CENTER_Y=150; const elements=[]; const cols=(mega||[]).slice().sort((a,b)=>(a.tactic_order||0)-(b.tactic_order||0));
     const groupIds=[];
     for (let ci=0; ci<cols.length; ci++) {
       const col = cols[ci]; const gid = `tg_${ci}`; groupIds.push(gid);
       elements.push({ data: { id: gid, label: String(col.tactic||''), group:'TacticGroup' }, position: { x: ci*COL_GAP, y: TOP_Y } });
       const items = col.techniques || [];
-      for (let ri=0; ri<items.length; ri++) { const st=items[ri]; const t=st.technique; if (!t||!t.id) continue; const x=ci*COL_GAP; const y=TOP_Y+ri*ROW_GAP; elements.push({ data: { id:String(t.id), label:'Tech', group:'Technique', raw:t, parent: gid }, position:{x,y} }); }
+      for (let ri=0; ri<items.length; ri++) { const st=items[ri]; const t=st.technique; if (!t||!t.id) continue; const x=ci*COL_GAP; const y=CENTER_Y + (ri - (items.length-1)/2)*ROW_GAP; elements.push({ data: { id:String(t.id), label:'Tech', group:'Technique', raw:t, parent: gid }, position:{x,y} }); }
     }
-    // Простые связи между соседними группами
-    for (let i=0; i<groupIds.length-1; i++) { const s=groupIds[i], t=groupIds[i+1]; const eid=`sc_group_${i}_${i+1}`; elements.push({ data: { id:eid, source:s, target:t, type:'SC_GROUP' } }); }
+    // Простые связи между соседними группами (скрываются при показе CVE)
+    for (let i=0; i<groupIds.length-1; i++) { const s=groupIds[i], t=groupIds[i+1]; const eid=`sc_group_${i}_${i+1}`; elements.push({ data: { id:eid, source:s, target:t, type:'SC_GROUP_LINK' } }); }
     return elements;
   }
 
@@ -1226,44 +1401,95 @@
 
   function addCVEsForGroup(groupEle, dontClear) {
     const kids = groupEle.children();
-    const bb = groupEle.boundingBox(); const centerX = (bb.x1+bb.x2)/2; const baseY = bb.y2 + 80; const CVE_GAP_Y=38, SPREAD_X=28;
-    // Собираем CVE с привязкой к минимальному ряду техники, чтобы сверху шли CVE от верхних техник
-    const items = [];
+    const CVE_GAP_Y=46; const OFFSET_X=70;
+    const usedY = [];
+    const placeY = (y) => { const MIN=44, STEP=6; let dy=0, dir=1, it=0, yy=y; while (usedY.some(v=>Math.abs(v-yy)<MIN) && it<200) { yy = y + dir*dy; dir=-dir; dy+=STEP; it++; } usedY.push(yy); return yy; };
     kids.forEach(k => {
       const tid = String(k.id());
       const st = primaryStepByTechId.get(tid); if (!st) return; const cves = Array.isArray(st.cves)?st.cves:[];
-      const row = Math.round((k.position('y') - bb.y1) / 70); // приблизительный ряд
-      for (const cv of cves) { if (!cv || !cv.id) continue; items.push({ cv, tid, row }); }
-    });
-    // Сортировка CVE по верхним связанным техникам
-    items.sort((a,b)=> a.row - b.row);
-    const placed = new Set(); let idx=0;
-    for (const it of items) {
-      const cid = String(it.cv.id); const tid = it.tid;
-      if (!placed.has(cid)) {
-        const x = centerX + (idx - Math.floor(items.length/2))*SPREAD_X; const y = baseY + idx*CVE_GAP_Y;
-        // Узел CVE может уже существовать (если он встречался в другой группе).
-        // В этом случае не добавляем его повторно, чтобы не получить ошибку дубликата id.
-        if (cy.getElementById(cid).length === 0) {
-          try {
-            cy.add({ group:'nodes', data:{ id: cid, label:'CVE', group:'CVE', raw: it.cv }, position:{ x, y } });
-          } catch (e) {
-            // На всякий случай игнорируем возможные гонки/дубликаты
+      const base = k.position(); const x = base.x + OFFSET_X;
+      for (let i=0; i<cves.length; i++) {
+        const cv = cves[i]; if (!cv || !cv.id) continue; const cid = String(cv.id);
+        const nodeId = `pg_cve_${tid}_${cid}`;
+        const y = placeY(base.y + (i - (cves.length-1)/2) * CVE_GAP_Y);
+        const cvss = cvssSumFromRaw(cv);
+        if (cy.getElementById(nodeId).length === 0) {
+          try { cy.add({ group:'nodes', data:{ id: nodeId, label:'CVE', group:'CVE', raw: cv, cvss: cvss }, position:{ x, y } }); } catch {}
+        }
+        const eid = `pg_tc_${tid}_${cid}`;
+        if (cy.getElementById(eid).length === 0) {
+          const epss = Number((cv.props && cv.props.epss) || 0);
+          try { cy.add({ group:'edges', data:{ id: eid, source: tid, target: nodeId, type: 'SC_TECH_TO_CVE', epss: epss } }); } catch {}
+        }
+        // Добавим связь CVE -> следующая тактика
+        const nextG = findNextTacticGroup(groupEle);
+        if (nextG) {
+          const e2 = `pg_cv_${tid}_${cid}_to_${nextG.id()}`;
+          if (cy.getElementById(e2).length === 0) {
+            try { cy.add({ group:'edges', data:{ id: e2, source: nodeId, target: nextG.id(), type: 'SC_GROUP' } }); } catch {}
           }
         }
-        placed.add(cid); idx++;
+      }
+    });
+    // Если показаны CVE, скрываем прямые связи только для этой тактики
+    try { hideGroupLinkFromGroup(groupEle.id()); } catch {}
+    // Применяем тему к только что добавленным элементам
+    const th = loadTheme(); if (th) applyTheme(th);
+  }
+
+  function addCVEsForTechnique(techEle) {
+    const tid = String(techEle.id());
+    const st = primaryStepByTechId.get(tid); if (!st) return;
+    const list = Array.isArray(st.cves) ? st.cves : [];
+    const base = techEle.position(); const x = base.x + 70; const CVE_GAP_Y = 46;
+    const usedY2 = [];
+    const placeY2 = (y) => { const MIN=44, STEP=6; let dy=0, dir=1, it=0, yy=y; while (usedY2.some(v=>Math.abs(v-yy)<MIN) && it<200) { yy = y + dir*dy; dir=-dir; dy+=STEP; it++; } usedY2.push(yy); return yy; };
+    for (let i = 0; i < list.length; i++) {
+      const cv = list[i]; if (!cv || !cv.id) continue; const cid = String(cv.id);
+      const nodeId = `pg_cve_${tid}_${cid}`;
+      const y = placeY2(base.y + (i - (list.length-1)/2) * CVE_GAP_Y);
+      const cvss = cvssSumFromRaw(cv);
+      if (cy.getElementById(nodeId).length === 0) {
+        try { cy.add({ group:'nodes', data:{ id: nodeId, label:'CVE', group:'CVE', raw: cv, cvss: cvss }, position:{ x, y } }); } catch {}
       }
       const eid = `pg_tc_${tid}_${cid}`;
       if (cy.getElementById(eid).length === 0) {
-        try {
-          cy.add({ group:'edges', data:{ id: eid, source: tid, target: cid, type: 'SC_TECH_TO_CVE' } });
-        } catch (e) {
-          // безопасно игнорируем повторные добавления
+        const epss = Number((cv.props && cv.props.epss) || 0);
+        try { cy.add({ group:'edges', data:{ id: eid, source: tid, target: nodeId, type: 'SC_TECH_TO_CVE', epss: epss } }); } catch {}
+      }
+      const nextG = findNextTacticGroup(techEle.parent());
+      if (nextG) {
+        const e2 = `pg_cv_${tid}_${cid}_to_${nextG.id()}`;
+        if (cy.getElementById(e2).length === 0) {
+          try { cy.add({ group:'edges', data:{ id: e2, source: nodeId, target: nextG.id(), type: 'SC_GROUP' } }); } catch {}
         }
       }
     }
-    // Применяем тему к только что добавленным элементам
+    // Если показаны CVE — скрываем прямые связи только для этой тактики
+    try { hideGroupLinkFromGroup(techEle.parent().id()); } catch {}
     const th = loadTheme(); if (th) applyTheme(th);
+  }
+
+  function setGroupLinksVisible(flag) { try { cy.elements("edge[type='SC_GROUP_LINK']").style('display', flag ? 'element' : 'none'); } catch {} }
+  function hideGroupLinkFromGroup(gid) {
+    try { cy.edges(`[type = 'SC_GROUP_LINK'][source = '${gid}']`).style('display','none'); } catch {}
+  }
+  function clearPrimaryCVEs(showLinks=false) {
+    try { cy.elements("edge[type='SC_TECH_TO_CVE']").remove(); } catch {}
+    try { cy.nodes("[group='CVE']").remove(); } catch {}
+    if (showLinks) setGroupLinksVisible(true);
+  }
+
+  function findNextTacticGroup(groupEle) {
+    try {
+      const gx = groupEle.position('x');
+      let next = null; let dx = Infinity;
+      cy.nodes("[group='TacticGroup']").forEach(g => {
+        const x = g.position('x');
+        if (x > gx && (x - gx) < dx) { dx = x - gx; next = g; }
+      });
+      return next;
+    } catch { return null; }
   }
 
   function showPrimaryAllCVEs() {
@@ -1272,6 +1498,7 @@
     cy.elements("node[group='CVE']").remove();
     const groups = cy.nodes("[group = 'TacticGroup']");
     groups.forEach(g => addCVEsForGroup(g, true));
+    setGroupLinksVisible(false);
     const th = loadTheme(); if (th) applyTheme(th);
   }
 

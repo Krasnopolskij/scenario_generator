@@ -50,6 +50,7 @@
   <header>
     <h1>Генерация сценариев</h1>
     <nav class="nav">
+      <button id="profile-toggle" type="button" class="btn-secondary" title="Профиль визуализации" aria-label="Профиль визуализации">Профиль</button>
       <button id="open-theme" type="button" class="btn-secondary" title="Настройки отображения" aria-label="Настройки">⚙ Настройки</button>
       <button id="theme-toggle" type="button" class="btn-secondary" title="Светлая тема" aria-label="Светлая тема">☀</button>
       <a href="/" class="nav-link">Сбор данных</a>
@@ -161,39 +162,6 @@
           <label>Цвет узлов Technique</label>
           <input id="theme-node-tech" type="color" value="#4fca21" />
         </div>
-        <hr style="border:0;border-top:1px solid #1d2342;margin:10px 0">
-        <div class="theme-row">
-          <label>Связь AFFECTS</label>
-          <input id="theme-edge-AFFECTS" type="color" value="#c0392b" />
-        </div>
-        <div class="theme-row">
-          <label>Связь CWE_TO_CVE</label>
-          <input id="theme-edge-CWE_TO_CVE" type="color" value="#d35400" />
-        </div>
-        <div class="theme-row">
-          <label>Связь CAPEC_TO_CWE</label>
-          <input id="theme-edge-CAPEC_TO_CWE" type="color" value="#2980b9" />
-        </div>
-        <div class="theme-row">
-          <label>Связь CAPEC_PARENT_TO_CAPEC_CHILD</label>
-          <input id="theme-edge-CAPEC_PARENT_TO_CAPEC_CHILD" type="color" value="#7f8c8d" />
-        </div>
-        <div class="theme-row">
-          <label>Связь CAPEC_TO_TECHNIQUE</label>
-          <input id="theme-edge-CAPEC_TO_TECHNIQUE" type="color" value="#27ae60" />
-        </div>
-        <div class="theme-row">
-          <label>Связь SC_STEP</label>
-          <input id="theme-edge-SC_STEP" type="color" value="#7f8c8d" />
-        </div>
-        <div class="theme-row">
-          <label>Связь SC_TECH_TO_CVE</label>
-          <input id="theme-edge-SC_TECH_TO_CVE" type="color" value="#8e44ad" />
-        </div>
-        <div class="theme-row">
-          <label>Связь SC_GROUP</label>
-          <input id="theme-edge-SC_GROUP" type="color" value="#7f8c8d" />
-        </div>
       </div>
       <div class="modal-actions">
         <button id="theme-reset" class="btn-secondary" title="Сбросить к стандартным цветам">Сбросить</button>
@@ -211,6 +179,6 @@
   <!-- Локальная библиотека Cytoscape -->
   <script src="/static/js/vendor/cytoscape.js-3.33.1/dist/cytoscape.min.js"></script>
   <script src="/static/js/theme.js?v=20251030" defer></script>
-  <script src="/static/js/graph.js?v=20251027-7"></script>
+  <script src="/static/js/graph.js?v=20251108-profiles"></script>
 </body>
 </html>

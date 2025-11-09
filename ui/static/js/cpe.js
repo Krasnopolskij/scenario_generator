@@ -59,7 +59,7 @@
     // Удаляем предыдущую кнопку More, чтобы не дублировать
     const prevMore = ul.querySelector('li.more');
     if (prevMore) prevMore.remove();
-    // Если это не дозагрузка — очищаем список
+    // Если это не дозагрузка, очищаем список
     if (!append) ul.innerHTML = '';
     (items || []).forEach(v => {
       const li = document.createElement('li');
@@ -350,7 +350,7 @@
     if (!btn || !btn.dataset || !btn.dataset.cpe) return;
     const cpe = btn.dataset.cpe;
     if (pickedSet.has(cpe)) {
-      // Повторный клик — удалить из выбранных
+      // Повторный клик - удалить из выбранных
       removePicked(cpe);
     } else {
       addPicked(cpe);
