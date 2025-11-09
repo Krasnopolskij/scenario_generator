@@ -50,6 +50,7 @@
   <header>
     <h1>Генерация сценариев</h1>
     <nav class="nav">
+      <button id="open-export" type="button" class="btn-secondary" title="Экспорт графа" aria-label="Экспорт графа">Экспорт</button>
       <button id="profile-toggle" type="button" class="btn-secondary" title="Профиль визуализации" aria-label="Профиль визуализации">Профиль</button>
       <button id="open-theme" type="button" class="btn-secondary" title="Настройки отображения" aria-label="Настройки">⚙ Настройки</button>
       <button id="theme-toggle" type="button" class="btn-secondary" title="Светлая тема" aria-label="Светлая тема">☀</button>
@@ -172,12 +173,47 @@
     </div>
   </div>
 
+  <!-- Модальное окно экспорта графа -->
+  <div id="export-backdrop" class="modal-backdrop" hidden>
+    <div class="modal">
+      <div class="modal-title">Экспорт графа</div>
+      <div class="modal-body">
+        <div class="actions" style="justify-content:flex-start;margin-bottom:10px">
+          <button id="export-png" class="btn-primary" type="button" title="Экспортировать в PNG">PNG</button>
+          <button id="export-svg" class="btn-primary" type="button" title="Экспортировать в SVG">SVG</button>
+          <button id="export-json" class="btn-primary" type="button" title="Экспортировать в JSON (в разработке)">JSON</button>
+        </div>
+        <div class="theme-row" style="grid-template-columns:auto 1fr">
+          <label for="export-transparent" style="margin:0">
+            <input id="export-transparent" type="checkbox" /> Прозрачный фон
+          </label>
+          <div style="color:var(--muted);font-size:12px;align-self:center">Применяется к PNG и SVG</div>
+        </div>
+        <div id="export-hint" style="color:var(--muted);font-size:12px;margin-top:12px;">
+          <div>
+            Режимы "PNG" и "SVG" сохряняют текущее состояние холста визуализации, включая масштаб и позицию.
+            Режим "SVG" позволяет сохранить векторное изображение, которое можно масштабировать без потери качества.
+        </div>
+          <div>
+            Режим "JSON" позволяет экспортировать файл сценариев для дальнейшей обработки сторонними модулями.
+          </div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <span style="flex:1"></span>
+        <button id="export-close" class="btn-secondary" type="button">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
   <footer>
     <span></span>
   </footer>
 
   <!-- Локальная библиотека Cytoscape -->
   <script src="/static/js/vendor/cytoscape.js-3.33.1/dist/cytoscape.min.js"></script>
+  <!-- Плагин экспорта SVG (локально) -->
+  <script src="/static/js/vendor/cytoscape-svg/cytoscape-svg.js"></script>
   <script src="/static/js/theme.js?v=20251030" defer></script>
   <script src="/static/js/graph.js?v=20251108-profiles"></script>
 </body>

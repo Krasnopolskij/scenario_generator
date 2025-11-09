@@ -23,6 +23,14 @@
   // Настройки темы
   const themeBtn = document.getElementById('open-theme');
   const themeBackdrop = document.getElementById('theme-backdrop');
+  // Экспорт
+  const exportBtn = document.getElementById('open-export');
+  const exportBackdrop = document.getElementById('export-backdrop');
+  const exportPngBtn = document.getElementById('export-png');
+  const exportSvgBtn = document.getElementById('export-svg');
+  const exportJsonBtn = document.getElementById('export-json');
+  const exportCloseBtn = document.getElementById('export-close');
+  const exportTransparent = document.getElementById('export-transparent');
   const themeCanvasInput = document.getElementById('theme-canvas');
   const themeLabelInput = document.getElementById('theme-label');
   const themeNodeInputs = {
@@ -44,6 +52,8 @@
   const LS_INSP = 'sg:graph:inspCollapsed';
   const LS_PROFILE = 'sg:ui:profile'; // 'color' | 'mono'
   const SNAP_LIMIT = 2 * 1024 * 1024; // 2 МБ
+  // Масштаб экспорта изображений
+  const EXPORT_SCALE = 2;
 
   let cy = null;
   let isScenarioView = false;
@@ -385,6 +395,140 @@
     if (themeCanvasInput) themeCanvasInput.addEventListener('input', preview);
     if (themeLabelInput) themeLabelInput.addEventListener('input', preview);
     Object.values(themeNodeInputs).forEach(inp => { if (inp) inp.addEventListener('input', preview); });
+  }
+
+  // Экспорт графа (PNG/SVG/JSON)
+  function openExportModal() {
+    try { if (exportBackdrop) { exportBackdrop.removeAttribute('hidden'); exportBackdrop.classList.add('open'); } } catch {}
+  }
+  function closeExportModal() {
+    try { if (exportBackdrop) { exportBackdrop.classList.remove('open'); exportBackdrop.setAttribute('hidden',''); } } catch {}
+  }
+  function tryRegisterSvgPlugin() {
+    try {
+      // Некоторые сборки требуют явной регистрации
+      if (window.cytoscape && window.cytoscapeSvg && !window.__cySvgRegistered) {
+        try { window.cytoscape.use(window.cytoscapeSvg); window.__cySvgRegistered = true; } catch {}
+      }
+    } catch {}
+  }
+  function getGraphBgColor() {
+    try {
+      if (!container) return '#fff';
+      const cs = getComputedStyle(container);
+      const bg = cs && (cs.backgroundColor || cs.background);
+      if (!bg || bg === 'rgba(0, 0, 0, 0)' || bg === 'transparent') return '#fff';
+      return bg;
+    } catch { return '#fff'; }
+  }
+  function inferPrefix() {
+    try {
+      if (isScenarioView) return (currentScenarioId === 'PRIMARY') ? 'primary' : 'linear';
+      return 'cpe';
+    } catch { return 'cpe'; }
+  }
+  function parseCpeParts(rawCpe) {
+    let vendor = 'unknown', product = 'unknown', version = 'unknown';
+    try {
+      const s = String(rawCpe || '').trim();
+      const parts = s.split(':');
+      if (parts.length >= 6 && parts[0] === 'cpe' && parts[1] === '2.3') {
+        vendor = parts[3] || vendor;
+        product = parts[4] || product;
+        version = parts[5] || version;
+      }
+    } catch {}
+    const norm = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    
+    const mapVersion = (v) => (v === '*' ? 'any' : (v === '-' ? 'none' : v));
+    return { vendor: norm(vendor), product: norm(product), version: norm(mapVersion(version)) };
+  }
+  function nowTimestampStr() {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const dd = pad(d.getDate());
+    const mm = pad(d.getMonth() + 1);
+    const yyyy = d.getFullYear();
+    const hh = pad(d.getHours());
+    const mi = pad(d.getMinutes());
+    const ss = pad(d.getSeconds());
+    return `${dd}${mm}${yyyy}_${hh}${mi}${ss}`;
+  }
+  function downloadDataUrl(dataUrl, filename) {
+    try {
+      const a = document.createElement('a');
+      a.href = dataUrl; a.download = filename; a.rel = 'noopener'; a.style.display = 'none';
+      document.body.appendChild(a); a.click(); a.remove();
+    } catch {}
+  }
+  function downloadBlob(blob, filename) {
+    try {
+      const url = URL.createObjectURL(blob);
+      downloadDataUrl(url, filename);
+      setTimeout(() => { try { URL.revokeObjectURL(url); } catch {} }, 1000);
+    } catch {}
+  }
+  function addSvgBackground(svgStr, color) {
+    try {
+      if (!color) return svgStr;
+      const p = new DOMParser();
+      const doc = p.parseFromString(svgStr, 'image/svg+xml');
+      const svg = doc.documentElement;
+      if (!svg || svg.nodeName.toLowerCase() !== 'svg') return svgStr;
+      const rect = doc.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      rect.setAttribute('x', '0'); rect.setAttribute('y', '0');
+      rect.setAttribute('width', '100%'); rect.setAttribute('height', '100%');
+      rect.setAttribute('fill', color);
+      svg.insertBefore(rect, svg.firstChild);
+      const ser = new XMLSerializer();
+      return ser.serializeToString(doc);
+    } catch { return svgStr; }
+  }
+  function buildExportFileName(ext) {
+    const prefix = inferPrefix();
+    const { vendor, product, version } = parseCpeParts(cpeInput && cpeInput.value);
+    const ts = nowTimestampStr();
+    return `${prefix}_${vendor}_${product}_${version}_${ts}.${ext}`;
+  }
+  function handleExportPng() {
+    if (!cy) { alert('Граф ещё не построен'); return; }
+    const transparent = !!(exportTransparent && exportTransparent.checked);
+    const opts = { full: false, scale: EXPORT_SCALE };
+    if (!transparent) {
+      const bg = getGraphBgColor();
+      if (bg) opts.bg = bg;
+    }
+    let dataUrl;
+    try { dataUrl = cy.png(opts); } catch (e) { alert('Не удалось экспортировать PNG: ' + e); return; }
+    const name = buildExportFileName('png');
+    downloadDataUrl(dataUrl, name);
+  }
+  function handleExportSvg() {
+    if (!cy) { alert('Граф ещё не построен'); return; }
+    tryRegisterSvgPlugin();
+    if (typeof cy.svg !== 'function') { alert('SVG экспорт недоступен: плагин не подключён'); return; }
+    let svgStr;
+    try { svgStr = cy.svg({ full: false, scale: EXPORT_SCALE }); } catch (e) { alert('Не удалось экспортировать SVG: ' + e); return; }
+    const transparent = !!(exportTransparent && exportTransparent.checked);
+    if (!transparent) {
+      const bg = getGraphBgColor() || '#fff';
+      svgStr = addSvgBackground(svgStr, bg);
+    }
+    const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
+    const name = buildExportFileName('svg');
+    downloadBlob(blob, name);
+  }
+  function handleExportJson() {
+    alert('В разработке');
+  }
+  function bindExportUI() {
+    if (exportBtn && exportBackdrop) exportBtn.addEventListener('click', openExportModal);
+    if (exportCloseBtn) exportCloseBtn.addEventListener('click', closeExportModal);
+    if (exportBackdrop) exportBackdrop.addEventListener('click', (e) => { if (e.target === exportBackdrop) closeExportModal(); });
+    if (exportPngBtn) exportPngBtn.addEventListener('click', handleExportPng);
+    if (exportSvgBtn) exportSvgBtn.addEventListener('click', handleExportSvg);
+    if (exportJsonBtn) exportJsonBtn.addEventListener('click', handleExportJson);
+    tryRegisterSvgPlugin();
   }
 
   // Подсказка при наведении на узел
@@ -1362,6 +1506,8 @@
   const initTheme = loadTheme(); if (initTheme) applyTheme(initTheme);
   // Интерфейс переключения профиля
   bindProfileUI();
+  // Интерфейс экспорта (PNG/SVG/JSON)
+  bindExportUI();
 
   // Реакция на смену темы UI: обновляем цвета надписей, если они не переопределены темой графа
   document.addEventListener('sg:theme-change', () => {
