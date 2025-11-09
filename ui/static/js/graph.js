@@ -107,7 +107,7 @@
     const mode = getUiThemeMode();
     const isLight = mode === 'light';
     if (profileBtn) {
-      profileBtn.textContent = profile === 'mono' ? 'Профиль: Ч/Б' : 'Профиль: Цветной';
+      profileBtn.textContent = profile === 'mono' ? 'Профиль: Ч/Б с тонированием' : 'Профиль: Стандартный';
       if (!isLight) {
         profileBtn.disabled = true;
         profileBtn.title = 'Профиль доступен только в светлой теме';
@@ -439,7 +439,7 @@
       }
     } catch {}
     const norm = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-    
+
     const mapVersion = (v) => (v === '*' ? 'any' : (v === '-' ? 'none' : v));
     return { vendor: norm(vendor), product: norm(product), version: norm(mapVersion(version)) };
   }
@@ -1438,7 +1438,8 @@
       }
       const elements = [];
       for (const n of data.nodes || []) {
-        elements.push({ data: { id: n.id, label: n.label, group: n.group, raw: n } });
+        const lbl = (n && n.group === 'Technique') ? 'T' : n.label;
+        elements.push({ data: { id: n.id, label: lbl, group: n.group, raw: n } });
       }
       for (const e of data.edges || []) {
         elements.push({ data: { id: e.id, source: e.source, target: e.target, type: e.type } });
