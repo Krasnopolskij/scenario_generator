@@ -593,7 +593,7 @@
     const vm = (viewModeSel && viewModeSel.value) || 'linear';
     const disable = vm === 'primary';
     if (scMaxPerTacticInput) scMaxPerTacticInput.disabled = disable;
-    if (showAllCves) showAllCves.disabled = (vm !== 'primary');
+    if (showAllCves) showAllCves.disabled = false;
   }
 
   function restoreSnapshotIfAny() {
@@ -753,6 +753,33 @@
       return;
     }
 
+    // Специальный порядок для узлов CVE: identifier, затем C/A/I подряд
+    if (group === 'CVE') {
+      const priority = ['identifier', 'cvss_C_score', 'cvss_A_score', 'cvss_I_score'];
+      const seen = new Set();
+      for (const k of priority) {
+        if (!(k in props)) continue;
+        let v = props[k];
+        if (v == null) v = '';
+        if (Array.isArray(v)) v = v.join(', ');
+        const vs = String(v).slice(0, 800);
+        rows.push(`<div class="row"><div class="k">${k}</div><div class="v">${vs}</div></div>`);
+        seen.add(k);
+      }
+      for (const k of Object.keys(props)) {
+        if (seen.has(k)) continue;
+        let v = props[k];
+        if (v == null) v = '';
+        if (Array.isArray(v)) v = v.join(', ');
+        const vs = String(v).slice(0, 800);
+        rows.push(`<div class="row"><div class="k">${k}</div><div class="v">${vs}</div></div>`);
+        if (rows.length > 30) break;
+      }
+      rows.push(`<div class="row"><div class="k">label</div><div class="v">${label}</div></div>`);
+      inspector.innerHTML = rows.join('');
+      return;
+    }
+
     // Поведение по умолчанию для других групп: свойства как есть и label в конце
     for (const k of Object.keys(props)) {
       let v = props[k];
@@ -807,6 +834,8 @@
     if (viewMode === 'primary') {
       renderPrimaryCard(data);
     } else {
+      // По умолчанию для линейного режима — галочка включена
+      try { if (showAllCves) showAllCves.checked = true; } catch {}
       renderScenarios(data);
     }
   }
@@ -948,12 +977,89 @@
       ele.addClass('sel');
       ele.closedNeighborhood().difference(ele).addClass('neigh');
       renderInspector(ele);
+      // В линейном сценарии при выключенном чекбоксе — показывать CVE только для выбранной техники
+      try {
+        const grp = ele.data('group');
+        if (grp === 'Technique' && showAllCves && !showAllCves.checked) {
+          const tid = String(ele.id());
+          showLinearCvesForTechnique(tid);
+        }
+      } catch {}
     });
-    cy.on('tap', (evt) => { if (evt.target === cy) { cy.elements().removeClass('sel neigh'); renderInspector(null); } });
+    cy.on('tap', (evt) => {
+      if (evt.target === cy) {
+        cy.elements().removeClass('sel neigh');
+        renderInspector(null);
+        // В линейном сценарии при выключенном чекбоксе — скрыть показанные CVE
+        try {
+          if (isScenarioView && currentScenarioId && currentScenarioId !== 'PRIMARY' && showAllCves && !showAllCves.checked) {
+            setLinearCVEsVisible(false);
+          }
+        } catch {}
+      }
+    });
     bindTooltipEvents();
     bindTechLabelFollow();
+    // Применяем видимость CVE согласно чекбоксу для линейного режима
+    try { setLinearCVEsVisible(!!(showAllCves && showAllCves.checked)); } catch {}
     // В режиме сценария снимок не сохраняем, чтобы не перетирать исходный граф в LS
     const th3 = loadTheme(); if (th3) applyTheme(th3);
+  }
+
+  // Управление видимостью всех CVE в линейном сценарии
+  function setLinearCVEsVisible(flag) {
+    if (!cy) return;
+    try { cy.nodes("[group='CVE']").style('display', flag ? 'element' : 'none'); } catch {}
+    try { cy.edges("[type='SC_TECH_TO_CVE']").style('display', flag ? 'element' : 'none'); } catch {}
+    try { cy.edges("[type='SC_STEP']").style('display', flag ? 'element' : 'none'); } catch {}
+    // Прямые стрелки между техниками:
+    //  - в Ч/Б профиле: скрываем их при показе CVE, показываем когда CVE скрыты
+    //  - в цветном профиле: всегда показываем
+    try {
+      const profile = getProfile();
+      if (profile === 'mono') {
+        cy.edges("[type='SC_GROUP_LINK']").style('display', flag ? 'none' : 'element');
+      } else {
+        cy.edges("[type='SC_GROUP_LINK']").style('display', 'element');
+      }
+    } catch {}
+  }
+
+  // Показать CVE только для выбранной техники (линейный режим при выключенном чекбоксе)
+  function showLinearCvesForTechnique(tid) {
+    if (!cy) return;
+    try {
+      // Сначала скрываем все CVE и связи
+      setLinearCVEsVisible(false);
+      // Прямые стрелки между техниками оставляем видимыми всегда в цветном профиле
+      // и скрываем только стрелку выбранной техники в Ч/Б профиле
+      const profile = getProfile();
+      let nextTid = null;
+      try {
+        const gl = cy.edges(`[type = 'SC_GROUP_LINK'][source = '${tid}']`);
+        if (gl && gl.length > 0) {
+          nextTid = String(gl[0].data('target'));
+          if (profile === 'mono') { gl.style('display','none'); }
+        }
+      } catch {}
+      // Покажем связи техника->CVE для данной техники
+      const tEdges = cy.edges(`[type = 'SC_TECH_TO_CVE'][source = '${tid}']`);
+      tEdges.style('display', 'element');
+      // Для каждой связи делаем видимым целевой CVE и его переход к следующей технике
+      tEdges.forEach(e => {
+        try {
+          const cid = e.data('target');
+          const cvNode = cy.getElementById(cid);
+          if (cvNode && cvNode.length) cvNode.style('display', 'element');
+          // В профиль «color» не рисуем переход CVE -> следующая техника,
+          // чтобы CVE не соединялся визуально с несколькими техниками.
+          // В профиль «mono» сохраняем прежнюю логику и показываем стрелку только к nextTid.
+          if (profile === 'mono' && nextTid) {
+            try { cy.edges(`[type = 'SC_STEP'][source = '${cid}'][target = '${nextTid}']`).style('display', 'element'); } catch {}
+          }
+        } catch {}
+      });
+    } catch {}
   }
 
   function buildScenarioElements(sc) {
@@ -975,7 +1081,7 @@
       const x = i * GAP_X;
       const tid = String(t.id);
       techPos.set(tid, { x, y: TECH_Y });
-      elements.push({ data: { id: tid, label: 'Tech', group: 'Technique', raw: t }, position: { x, y: TECH_Y } });
+      elements.push({ data: { id: tid, label: 'T', group: 'Technique', raw: t }, position: { x, y: TECH_Y } });
       // Надпись над техникой с её идентификатором (для обоих профилей)
       const tIdLabel = (t.props && t.props.identifier) ? String(t.props.identifier) : '';
       if (tIdLabel) {
@@ -1051,6 +1157,20 @@
     }
 
     // Рёбра техника -> CVE + CVE -> следующая техника
+    // Подготовим множество пар (technique, cve), чтобы избежать дублирования
+    // связи между одной техникой и одной CVE в обоих направлениях.
+    const tcPairs = new Set(); // key: `${tid}::${cid}`
+    for (let i = 0; i < steps.length; i++) {
+      const st = steps[i];
+      const t = st.technique; if (!t || !t.id) continue;
+      const tid = String(t.id);
+      const cves = Array.isArray(st.cves) ? st.cves : [];
+      for (const cv of cves) {
+        if (!cv || !cv.id) continue;
+        const cid = String(cv.id);
+        tcPairs.add(`${tid}::${cid}`);
+      }
+    }
     const edgeIds = new Set();
     for (let i = 0; i < steps.length; i++) {
       const st = steps[i];
@@ -1066,7 +1186,12 @@
         if (!edgeIds.has(eid1)) { edgeIds.add(eid1); elements.push({ data: { id: eid1, source: tid, target: cid, type: 'SC_TECH_TO_CVE' } }); }
         if (nextTid) {
           const eid2 = `sc_cv_${cid}_${nextTid}`;
-          if (!edgeIds.has(eid2)) { edgeIds.add(eid2); elements.push({ data: { id: eid2, source: cid, target: nextTid, type: 'SC_STEP' } }); }
+          // Если для пары (nextTid, cid) уже существует связь Technique->CVE,
+          // не добавляем обратную связь CVE->Technique, чтобы избежать двух
+          // параллельных рёбер между теми же узлами.
+          if (!tcPairs.has(`${nextTid}::${cid}`)) {
+            if (!edgeIds.has(eid2)) { edgeIds.add(eid2); elements.push({ data: { id: eid2, source: cid, target: nextTid, type: 'SC_STEP' } }); }
+          }
         }
       }
     }
@@ -1089,12 +1214,21 @@
       const st = steps[i]; const t = st.technique; if (!t || !t.id) continue;
       const tid = String(t.id); const x = i * GAP_X; const y = TECH_Y;
       techPos.set(tid, { x, y });
-      elements.push({ data: { id: tid, label: 'Tech', group: 'Technique', raw: t }, position: { x, y } });
+      elements.push({ data: { id: tid, label: 'T', group: 'Technique', raw: t }, position: { x, y } });
       // Надпись с идентификатором техники
       const tIdLabel = (t.props && t.props.identifier) ? String(t.props.identifier) : '';
       if (tIdLabel) {
         const lid = `tl_${tid}`;
         elements.push({ data: { id: lid, label: tIdLabel, group: 'TechLabel' }, position: { x, y: y - 30 } });
+      }
+      // Прямая стрелка к следующей технике (для базового отображения пути)
+      if (i < steps.length - 1) {
+        const nextT = steps[i+1].technique;
+        if (nextT && nextT.id) {
+          const nextTid = String(nextT.id);
+          const eid = `sc_tt_${tid}_${nextTid}`;
+          elements.push({ data: { id: eid, source: tid, target: nextTid, type: 'SC_GROUP_LINK' } });
+        }
       }
     }
 
@@ -1282,6 +1416,10 @@
       if (showAllCves.checked) showPrimaryAllCVEs();
       else { try { renderPrimaryOnCanvas(lastMega || []); } catch { cy.elements("edge[type='SC_TECH_TO_CVE']").remove(); cy.elements("node[group='CVE']").remove(); } }
       const th = loadTheme(); if (th) applyTheme(th);
+    } else if (isScenarioView && currentScenarioId) {
+      // Линейный сценарий: показать/скрыть все CVE и связанные рёбра
+      try { setLinearCVEsVisible(!!showAllCves.checked); } catch {}
+      const th = loadTheme(); if (th) applyTheme(th);
     }
   });
 
@@ -1384,7 +1522,7 @@
       const col = cols[ci]; const gid = `tg_${ci}`; groupIds.push(gid);
       elements.push({ data: { id: gid, label: String(col.tactic||''), group:'TacticGroup' }, position: { x: ci*COL_GAP, y: TOP_Y } });
       const items = col.techniques || [];
-      for (let ri=0; ri<items.length; ri++) { const st=items[ri]; const t=st.technique; if (!t||!t.id) continue; const x=ci*COL_GAP; const y=CENTER_Y + (ri - (items.length-1)/2)*ROW_GAP; elements.push({ data: { id:String(t.id), label:'Tech', group:'Technique', raw:t, parent: gid }, position:{x,y} }); }
+      for (let ri=0; ri<items.length; ri++) { const st=items[ri]; const t=st.technique; if (!t||!t.id) continue; const x=ci*COL_GAP; const y=CENTER_Y + (ri - (items.length-1)/2)*ROW_GAP; elements.push({ data: { id:String(t.id), label:'T', group:'Technique', raw:t, parent: gid }, position:{x,y} }); }
     }
     // Простые связи между соседними группами (скрываются при показе CVE)
     for (let i=0; i<groupIds.length-1; i++) { const s=groupIds[i], t=groupIds[i+1]; const eid=`sc_group_${i}_${i+1}`; elements.push({ data: { id:eid, source:s, target:t, type:'SC_GROUP_LINK' } }); }

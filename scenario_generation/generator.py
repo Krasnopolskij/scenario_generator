@@ -169,11 +169,26 @@ def generate_scenarios(
     # temp map: (order, tactic) -> list
     tmp: Dict[Tuple[int, str], List[Dict[str, Any]]] = {}
 
+    # Тактики, которые исключаем из построения сценариев
+    excluded_tactics_norm = {
+        "reconnaissance",
+        "resource-development"
+    }
+
+    def _norm(s: Any) -> str:
+        try:
+            return str(s or "").strip().lower()
+        except Exception:
+            return ""
+
     for tid, rec in evidence.items():
         tech = rec["technique"]
         props = tech.get("props", {})
         tactic_order = _ensure_order(props.get("tactic_order"))
         primary_tactic = (props.get("primary_tactic") or "?")
+        # Пропускаем техники из тактик Разведка / Подготовка ресурсов
+        if _norm(primary_tactic) in excluded_tactics_norm:
+            continue
         # вес шага — сумма базовых CVSS среди всех связанных CVE
         weight = _sum_base_cvss_from_cves(rec["cves"]) if rec.get("cves") else 0.0
         step = {

@@ -407,6 +407,12 @@ def upsert_batch(graph: Graph, batch: List[dict], epss_map: Dict[str, Dict[str, 
     for item in batch:
         cve_id = item["id"]
         item["epss"] = (epss_map.get(cve_id) or {}).get("epss")
+        # Флаг источника EPSS: true — пришёл из FIRST в этом батче; иначе не задаём
+        try:
+            val = (epss_map.get(cve_id) or {}).get("epss")
+            item["epss_from_first"] = True if val is not None else None
+        except Exception:
+            item["epss_from_first"] = None
         # Парсим CPE 2.3 поля для каждого URI
         parsed_list = []
         for uri in item.get("cpes", []):
@@ -423,6 +429,7 @@ def upsert_batch(graph: Graph, batch: List[dict], epss_map: Dict[str, Dict[str, 
       v.cvss_I_score = c.cvss_I_score,
       v.cvss_A_score = c.cvss_A_score,
       v.epss = c.epss,
+      v.epss_from_first = c.epss_from_first,
       v.published = c.published,
       v.patch_vendor = c.patch_vendor,
       v.patch_third_party = c.patch_third_party
@@ -432,6 +439,7 @@ def upsert_batch(graph: Graph, batch: List[dict], epss_map: Dict[str, Dict[str, 
       v.cvss_I_score = c.cvss_I_score,
       v.cvss_A_score = c.cvss_A_score,
       v.epss = c.epss,
+      v.epss_from_first = coalesce(c.epss_from_first, v.epss_from_first),
       v.published = c.published,
       v.patch_vendor = c.patch_vendor,
       v.patch_third_party = c.patch_third_party
@@ -639,6 +647,56 @@ def update_cisa_kev(graph: Graph):
     print("[KEV] Обновление завершено")
 
 
+def apply_epss_fallback_min(graph: Graph):
+    """Присваивает минимальный EPSS там, где он отсутствует, и выставляет флаг источника.
+
+    Логика:
+      - Находим минимальный EPSS среди CVE, у которых EPSS задан.
+      - Для всех CVE без EPSS задаём EPSS = min_epss и флаг epss_from_first = false (значение подставлено).
+      - Для всех CVE с EPSS из источника выставляем epss_from_first = true.
+      - Старый флаг epss_is_fallback (если присутствует) удаляем.
+    """
+    try:
+        # Находим минимальный EPSS среди тех, что помечены как пришедшие из источника FIRST
+        rec = graph.run(
+            """
+            MATCH (v:CVE)
+            WHERE coalesce(v.epss_from_first, false) = true AND v.epss IS NOT NULL
+            RETURN min(toFloat(v.epss)) AS m
+            """
+        ).data()
+        min_epss = None
+        if rec and isinstance(rec, list) and rec[0].get("m") is not None:
+            try:
+                min_epss = float(rec[0].get("m"))
+            except Exception:
+                min_epss = None
+        if min_epss is None:
+            # Не к чему приравнивать — пропускаем
+            return
+        # Присваиваем минимальный EPSS всем CVE, у которых EPSS не из источника FIRST
+        # (epss_from_first=false или флаг отсутствует), а также тем, у кого EPSS отсутствует.
+        graph.run(
+            """
+            MATCH (v:CVE)
+            WHERE coalesce(v.epss_from_first, false) = false OR v.epss IS NULL
+            SET v.epss = $m,
+                v.epss_from_first = false
+            """,
+            m=min_epss,
+        )
+        # Удаляем устаревший флаг, если такой имеется
+        graph.run(
+            """
+            MATCH (v:CVE)
+            WHERE v.epss_is_fallback IS NOT NULL
+            REMOVE v.epss_is_fallback
+            """
+        )
+    except Exception as e:
+        print(f"[EPSS] Ошибка применения значения по умолчанию: {e}")
+
+
 def load():
     try:
         # Подключение к Neo4j
@@ -681,6 +739,12 @@ def load():
             update_cisa_kev(graph)
         except Exception as e:
             print(f"[KEV] Ошибка обновления: {e}")
+
+        # После импорта всех годов — подставляем минимальный EPSS для отсутствующих
+        try:
+            apply_epss_fallback_min(graph)
+        except Exception as e:
+            print(f"[EPSS] Ошибка применения fallback: {e}")
 
         print(f"Импорт CVE завершён за {time.time() - t0:.1f}с")
     except Exception as e:
