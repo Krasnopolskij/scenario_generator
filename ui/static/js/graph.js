@@ -43,7 +43,7 @@
   const LS_THEME = 'sg:graph:theme';
   const LS_INSP = 'sg:graph:inspCollapsed';
   const LS_PROFILE = 'sg:ui:profile'; // 'color' | 'mono'
-  const SNAP_LIMIT = 2048; // 2 МБ
+  const SNAP_LIMIT = 2 * 1024 * 1024; // 2 МБ
 
   let cy = null;
   let isScenarioView = false;
