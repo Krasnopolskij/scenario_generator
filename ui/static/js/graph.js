@@ -75,7 +75,7 @@
         'execution': 'Выполнение',
         'persistence': 'Закрепление',
         'privilege-escalation': 'Повышение привилегий',
-        'defense-evasion': 'Предотвращение обнаружения',
+        'defense-evasion': 'Обход защиты',
         'credential-access': 'Получение учетных данных',
         'discovery': 'Изучение',
         'lateral-movement': 'Перемещение внутри периметра',
