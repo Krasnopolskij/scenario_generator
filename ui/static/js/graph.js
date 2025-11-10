@@ -716,7 +716,10 @@
       const d = JSON.parse(raw);
       if (d && typeof d === 'object') {
         if (typeof d.cpe === 'string' && d.cpe && !new URLSearchParams(window.location.search).get('cpe')) cpeInput.value = d.cpe;
-        if (typeof d.mode === 'string') modeSel.value = d.mode === 'simple' ? 'simple' : 'full';
+        if (typeof d.mode === 'string') {
+          const acceptable = new Set(['full', 'full_relaxed', 'simple']);
+          modeSel.value = acceptable.has(d.mode) ? d.mode : 'full';
+        }
       }
     } catch (e) { console.warn('ls load graph form', e); }
   }

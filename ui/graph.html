@@ -67,8 +67,10 @@
         <form id="graph-form" class="form-inline">
         <label for="cpe">URI объекта защиты:</label>
         <input id="cpe" name="cpe" type="text" placeholder="например, cpe:2.3:a:linkace:linkace:*:*:*:*:*:*:*:*" />
+        <label for="cpe">Режим отображения подграфа:</label>
         <select id="mode" name="mode">
-          <option value="full" selected>Полный (CVE→CWE→CAPEC→Technique)</option>
+          <option value="full" selected>Полный (строгий)</option>
+          <option value="full_relaxed">Полный (нестрогий)</option>
           <option value="simple">Только CVE→CPE</option>
         </select>
         <div class="actions">
@@ -90,7 +92,7 @@
             </select>
           </div>
           <div class="field">
-            <label for="view-mode">Режим отображения:</label>
+            <label for="view-mode">Режим отображения сценариев:</label>
             <select id="view-mode">
               <option value="linear" selected>Линейные сценарии</option>
               <option value="primary">Первичный сценарий</option>
