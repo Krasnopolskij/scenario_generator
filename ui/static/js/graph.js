@@ -62,6 +62,32 @@
   let currentScenarioData = null; // выбранный сценарий для повторной перерисовки
   let lastMega = null; // mega для первичного сценария
 
+  // Перевод названий тактик ATT&CK для отображения
+  function translateTacticName(name) {
+    try {
+      const raw = String(name || '').trim();
+      if (!raw) return raw;
+      const key = raw.toLowerCase().replace(/[ _]+/g, '-');
+      const map = {
+        'reconnaissance': 'Разведка',
+        'resource-development': 'Подготовка ресурсов',
+        'initial-access': 'Первоначальный доступ',
+        'execution': 'Выполнение',
+        'persistence': 'Закрепление',
+        'privilege-escalation': 'Повышение привилегий',
+        'defense-evasion': 'Предотвращение обнаружения',
+        'credential-access': 'Получение учетных данных',
+        'discovery': 'Изучение',
+        'lateral-movement': 'Перемещение внутри периметра',
+        'collection': 'Сбор данных',
+        'command-and-control': 'Организация управления',
+        'exfiltration': 'Эксфильтрация данных',
+        'impact': 'Деструктивное оздействие',
+      };
+      return map[key] || raw;
+    } catch { return name; }
+  }
+
   // Обработка сворачивания инспектора
   function setInspectorCollapsed(flag, save=true) {
     try {
@@ -1107,7 +1133,8 @@
         row.className = 'scenario-step';
         const left = document.createElement('div');
         const tprops = st.technique && st.technique.props || {};
-        left.textContent = `${idx+1}. [${st.tactic || '?'}] ${tprops.identifier || ''} ${tprops.name ? '— ' + tprops.name : ''}`;
+        const tacticLabelRu = translateTacticName(st.tactic || '?');
+        left.textContent = `${idx+1}. [${tacticLabelRu || '?'}] ${tprops.identifier || ''} ${tprops.name ? '— ' + tprops.name : ''}`;
         const right = document.createElement('div');
         right.className = 'step-cves';
         (st.cves || []).forEach(cv => {
@@ -1700,7 +1727,8 @@
     const groupIds=[];
     for (let ci=0; ci<cols.length; ci++) {
       const col = cols[ci]; const gid = `tg_${ci}`; groupIds.push(gid);
-      elements.push({ data: { id: gid, label: String(col.tactic||''), group:'TacticGroup' }, position: { x: ci*COL_GAP, y: TOP_Y } });
+      const tgLabel = translateTacticName(col.tactic);
+      elements.push({ data: { id: gid, label: String(tgLabel||''), group:'TacticGroup' }, position: { x: ci*COL_GAP, y: TOP_Y } });
       const items = col.techniques || [];
       for (let ri=0; ri<items.length; ri++) { const st=items[ri]; const t=st.technique; if (!t||!t.id) continue; const x=ci*COL_GAP; const y=CENTER_Y + (ri - (items.length-1)/2)*ROW_GAP; elements.push({ data: { id:String(t.id), label:'T', group:'Technique', raw:t, parent: gid }, position:{x,y} }); }
     }
