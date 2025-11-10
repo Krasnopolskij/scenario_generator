@@ -306,7 +306,7 @@ button.selected { background: var(--ok); }
 .page-graph .kv .v { color: var(--text); word-break: break-word; }
 
 .page-graph .form-inline { display: grid; grid-template-columns: 1fr; gap: 10px; }
-.page-graph .form-inline label { font-size: 13px; color: var(--text); }
+.page-graph .form-inline label { font-size: 14px; color: var(--text); }
 .page-graph .form-inline input[type="text"] { width: 100%; }
 .page-graph #draw-btn { width: fit-content; }
 
