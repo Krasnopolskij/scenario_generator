@@ -56,6 +56,9 @@ def process_techniques(objects, graph):
     total = 0
     for _obj in objects:
         if _obj.get('type') == 'attack-pattern':
+            # Пропускаем устаревшие/отозванные техники при подсчёте прогресса
+            if _obj.get('revoked') or _obj.get('x_mitre_deprecated'):
+                continue
             for _ref in _obj.get('external_references', []):
                 if _ref.get('source_name') == 'mitre-attack':
                     total += 1
@@ -64,6 +67,10 @@ def process_techniques(objects, graph):
 
     for obj in objects:
         if obj.get('type') != "attack-pattern":
+            continue
+
+        # Пропускаем устаревшие (deprecated) и отозванные (revoked) техники
+        if obj.get('revoked') or obj.get('x_mitre_deprecated'):
             continue
 
         mitre_id = None
