@@ -518,8 +518,41 @@
     const name = buildExportFileName('svg');
     downloadBlob(blob, name);
   }
-  function handleExportJson() {
-    alert('В разработке');
+  async function handleExportJson() {
+    try {
+      const cpe = (cpeInput && cpeInput.value || '').trim();
+      if (!cpe) { alert('Сначала укажите cpe23Uri и постройте граф'); return; }
+      const mode = (scModeSel && scModeSel.value) || 'strict';
+      let maxPer = 3;
+      try { maxPer = Math.max(1, Math.min(10, parseInt(scMaxPerTacticInput.value || '3'))); } catch {}
+      const qs = new URLSearchParams({ cpe, mode, max_per_tactic: String(maxPer) });
+      const resp = await fetch(`/api/export?${qs.toString()}`);
+      if (!resp.ok) {
+        let err = `${resp.status} ${resp.statusText}`;
+        try { const data = await resp.json(); if (data && data.error) err += ` — ${data.error}`; } catch {}
+        alert(`Ошибка экспорта: ${err}`);
+        return;
+      }
+      // Пытаемся получить имя файла из заголовка Content-Disposition
+      let fname = 'export.json';
+      try {
+        const cd = resp.headers.get('Content-Disposition') || resp.headers.get('content-disposition') || '';
+        const m = cd.match(/filename\s*=\s*"?([^";]+)"?/i);
+        if (m && m[1]) fname = m[1];
+      } catch {}
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fname;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      if (exportBackdrop) closeExportModal();
+    } catch (e) {
+      alert(`Ошибка экспорта: ${e}`);
+    }
   }
   function bindExportUI() {
     if (exportBtn && exportBackdrop) exportBtn.addEventListener('click', openExportModal);

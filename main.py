@@ -8,12 +8,13 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
+from fastapi.responses import FileResponse, StreamingResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from py2neo import Graph
 from dotenv import load_dotenv
 from cpe import search as cpe_search
 from scenario_generation.generator import generate_scenarios
+import datetime as dt
 
 ROOT = Path(__file__).parent.resolve()
 load_dotenv() 
@@ -452,3 +453,174 @@ def api_scenarios(cpe: str, mode: str = "strict", max_per_tactic: int = 3):
 
     data = generate_scenarios(g, cpe_in, mode=m, max_per_tactic=mpt)
     return data
+
+
+@app.get("/api/export")
+def api_export(cpe: str, mode: str = "strict", max_per_tactic: int = 3):
+    """Экспорт сценариев в облегчённом JSON-формате:
+    - primary: группы тактик с техниками и списками CVE (только ID)
+    - linear: все комбинации (одна техника на тактику), без ограничений по числу сценариев
+    """
+    g = get_graph()
+    # Нормализуем вход
+    cpe_in = (cpe or "").strip()
+    idx = cpe_in.find("cpe:2.3")
+    if idx != -1:
+        cpe_in = cpe_in[idx:]
+
+    m = (mode or "strict").strip().lower()
+    if m not in ("strict", "relaxed"):
+        m = "strict"
+    try:
+        mpt = int(max_per_tactic)
+        if mpt <= 0:
+            mpt = 1
+        if mpt > 10:
+            mpt = 10
+    except Exception:
+        mpt = 3
+
+    data = generate_scenarios(g, cpe_in, mode=m, max_per_tactic=mpt)
+    mega = list(data.get("mega") or [])
+
+    # primary -> тактики -> техники (id) -> cve_ids
+    primary = []
+    for col in sorted(mega, key=lambda x: (x.get("tactic_order") or 0)):
+        tactic = col.get("tactic")
+        order = col.get("tactic_order")
+        items = []
+        for st in (col.get("techniques") or []):
+            tech = (st or {}).get("technique") or {}
+            tprops = tech.get("props") or {}
+            tid = tprops.get("identifier")
+            if not tid:
+                continue
+            cve_ids = []
+            for cv in (st.get("cves") or []):
+                cprops = (cv or {}).get("props") or {}
+                cid = cprops.get("identifier")
+                if cid:
+                    cve_ids.append(cid)
+            items.append({
+                "technique_id": tid,
+                "cve_ids": cve_ids,
+            })
+        primary.append({
+            "tactic": tactic,
+            "tactic_order": order,
+            "techniques": items,
+        })
+
+    # linear, все комбинации по одной технике на тактику
+    cols = []
+    for col in sorted(mega, key=lambda x: (x.get("tactic_order") or 0)):
+        entries = []
+        for st in (col.get("techniques") or []):
+            tech = (st or {}).get("technique") or {}
+            tprops = tech.get("props") or {}
+            tid = tprops.get("identifier")
+            if not tid:
+                continue
+            # Разворачиваем CVE со значениями EPSS и компонент CVSS
+            cves = []
+            for cv in (st.get("cves") or []):
+                if not cv:
+                    continue
+                cprops = (cv.get("props") or {})
+                cid = cprops.get("identifier")
+                if not cid:
+                    continue
+                # источник EPSS, first.org (если epss_from_first = true), иначе generated
+                src = "first.org" if bool(cprops.get("epss_from_first")) else "generated"
+                cves.append({
+                    "cve_id": cid,
+                    "epss": cprops.get("epss"),
+                    "epss_source": src,
+                    "cvss_C_score": cprops.get("cvss_C_score") or 0,
+                    "cvss_A_score": cprops.get("cvss_A_score") or 0,
+                    "cvss_I_score": cprops.get("cvss_I_score") or 0,
+                })
+            entries.append({
+                "tactic": col.get("tactic"),
+                "technique_id": tid,
+                "cves": cves,
+            })
+        cols.append(entries)
+
+    # Перебор всех комбинаций
+    linear = []
+    if cols and all(len(c) > 0 for c in cols):
+        stack = [0] * len(cols)
+        while True:
+            pick = [cols[i][stack[i]] for i in range(len(cols))]
+            linear.append({
+                "scenario_id": f"scn-{len(linear)+1:03d}",
+                "techniques": pick,
+            })
+            idx2 = len(cols) - 1
+            while idx2 >= 0:
+                stack[idx2] += 1
+                if stack[idx2] < len(cols[idx2]):
+                    break
+                stack[idx2] = 0
+                idx2 -= 1
+            if idx2 < 0:
+                break
+
+    # Заголовок и метаданные (локальное время с часовым поясом)
+    now_iso = dt.datetime.now().astimezone().replace(microsecond=0).isoformat()
+    payload = {
+        "schema": "scenario-export",
+        "schema_version": 1,
+        "metadata": {
+            "cpe": cpe_in,
+            "date_created": now_iso,
+            "mode": m,
+            "max_per_tactic": mpt,
+            "linear_count": len(linear),
+        },
+        "primary": primary,
+        "linear": linear,
+    }
+
+    import json as _json
+    body = _json.dumps(payload, ensure_ascii=False)
+
+    # Формирование имени файла: vendor_product_version_ddmmyyyy_hhmmss.json
+    def _safe_part(s: str) -> str:
+        t = (s or '').strip()
+        if t == '*':
+            t = 'any'
+        elif t == '-':
+            t = 'none'
+        t = t.lower()
+        out = []
+        for ch in t:
+            if ch.isalnum() or ch in ('-', '_', '.'):
+                out.append(ch)
+            else:
+                out.append('_')
+        t2 = ''.join(out).strip('_')
+        return t2 or 'none'
+
+    def _parse_cpe_parts(cpe_uri: str):
+        try:
+            parts = cpe_uri.split(':')
+            vendor = parts[3] if len(parts) > 3 else 'vendor'
+            product = parts[4] if len(parts) > 4 else 'product'
+            version = parts[5] if len(parts) > 5 else 'none'
+            return _safe_part(vendor), _safe_part(product), _safe_part(version)
+        except Exception:
+            return 'vendor', 'product', 'none'
+
+    v, p, ver = _parse_cpe_parts(cpe_in)
+    ts = dt.datetime.now().astimezone()
+    fname = f"{v}_{p}_{ver}_{ts.strftime('%d%m%Y_%H%M%S')}.json"
+
+    return Response(
+        content=body,
+        media_type="application/json; charset=utf-8",
+        headers={
+            "Content-Disposition": f"attachment; filename={fname}",
+        },
+    )
