@@ -1,4 +1,4 @@
-// Lightweight global tooltip, reusable across pages
+// Высплывающее окно подсказки
 (function() {
   const TIP_MARGIN = 8;
   let tipEl = null;
@@ -15,13 +15,12 @@
   function placeTipFor(el) {
     if (!tipEl) return;
     const rect = el.getBoundingClientRect();
-    // Show for measuring
     tipEl.style.left = '-9999px';
     tipEl.style.top = '-9999px';
     tipEl.classList.add('visible');
     const tw = Math.min(600, Math.max(360, tipEl.offsetWidth || 360));
     const th = tipEl.offsetHeight || 40;
-    // Prefer right, fallback to left; clamp to viewport
+    // По умолчанию показ окна справа, по необходимости слева
     const canRight = rect.right + TIP_MARGIN + tw <= window.innerWidth;
     let left = canRight ? (rect.right + TIP_MARGIN) : (rect.left - TIP_MARGIN - tw);
     if (left < TIP_MARGIN) left = TIP_MARGIN;
@@ -62,7 +61,6 @@
     window.addEventListener('scroll', () => { if (tipHost) placeTipFor(tipHost); }, true);
   }
 
-  // Auto-bind on DOM ready
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => bindTips(document));
   } else {
