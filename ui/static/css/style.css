@@ -128,6 +128,35 @@ button,
   user-select: none;
 }
 .help-icon:hover { background: var(--surface-soft); color: var(--text); }
+
+/* CSS‑тултип для иконки подсказки */
+.help-icon { position: relative; }
+/* Отключаем старый CSS‑тултип на псевдоэлементах: мешал вёрстке и прокрутке */
+.help-icon::after,
+.help-icon::before { content: none !important; }
+
+/* Глобальный JS‑тултип, который добавляется в <body> как .ui-tooltip */
+.ui-tooltip {
+  position: fixed; /* не влияет на поток и не расширяет страницу */
+  left: -9999px;
+  top: -9999px;
+  z-index: 2000; /* поверх карточек/панелей */
+  background: var(--panel-elev);
+  color: var(--text);
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  line-height: 1.35;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.35);
+  white-space: normal;
+  width: max-content;
+  max-width: min(600px, calc(100vw - 16px));
+  pointer-events: none; /* не перехватывает курсор */
+  opacity: 0;
+  transition: opacity .12s ease;
+}
+.ui-tooltip.visible { opacity: 1; }
 /* Лёгкое «подпрыгивание» при наведении */
 button:not(.insp-toggle):hover,
 .btn-link:hover,

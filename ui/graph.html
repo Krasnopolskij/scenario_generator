@@ -57,6 +57,7 @@
       <a href="/" class="nav-link">Сбор данных</a>
       <a href="/cpe" class="nav-link">Выбор CPE</a>
       <a href="/graph" class="nav-link active">Генерация сценариев</a>
+
     </nav>
   </header>
 
@@ -65,7 +66,11 @@
       <div class="ctrl-group">
         <h2>Визуализация связей CPE</h2>
         <form id="graph-form" class="form-inline">
-        <label for="cpe">URI объекта защиты:</label>
+        <label for="cpe">URI объекта защиты:
+          <span class="help-icon" data-tip='Поле заполняется автоматически, если на странице "Выбор CPE" был выбран 
+          объект защиты и выполнен переход к генерации. Также поддерживается ручной ввод необходимого URI в данное поле.' 
+          aria-label="Подсказка" tabindex="0">?</span>
+        </label>
         <input id="cpe" name="cpe" type="text" placeholder="например, cpe:2.3:a:linkace:linkace:*:*:*:*:*:*:*:*" />
         <label for="cpe">Режим отображения подграфа:</label>
         <select id="mode" name="mode">
@@ -217,6 +222,7 @@
   <!-- Плагин экспорта SVG (локально) -->
   <script src="/static/js/vendor/cytoscape-svg/cytoscape-svg.js"></script>
   <script src="/static/js/theme.js?v=20251030" defer></script>
+  <script src="/static/js/tooltip.js?v=20251111" defer></script>
   <script src="/static/js/graph.js?v=20251108-profiles"></script>
 </body>
 </html>

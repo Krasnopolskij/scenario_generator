@@ -323,4 +323,25 @@
     e.returnValue = '';
     return '';
   });
+
+  // Авто-флип тултипа: если справа мало места, показывать слева
+  const TIP_REQ_WIDTH = 420;
+  function updateTipSide(el) {
+    try {
+      const rect = el.getBoundingClientRect();
+      const spaceRight = Math.max(0, window.innerWidth - rect.right);
+      if (spaceRight < TIP_REQ_WIDTH) el.classList.add('tip-left');
+      else el.classList.remove('tip-left');
+    } catch {}
+  }
+  function bindTipAutoFlip(root=document) {
+    const tips = root.querySelectorAll('.help-icon[data-tip]');
+    tips.forEach(el => {
+      el.addEventListener('mouseenter', () => updateTipSide(el));
+      el.addEventListener('focus', () => updateTipSide(el));
+      // Обновление при ресайзе окна
+      window.addEventListener('resize', () => updateTipSide(el));
+    });
+  }
+  bindTipAutoFlip(document);
 })();
