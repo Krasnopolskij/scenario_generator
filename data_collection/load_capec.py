@@ -95,15 +95,7 @@ def load():
                             if mitre_id:
                                 mitre_id = "T" + mitre_id.group(1)
                             if mitre_id:
-                                graph.run(
-                                    """
-                                    MERGE (t:Technique {identifier: $mitre_id})
-                                    """,
-                                    {
-                                        "mitre_id": mitre_id,
-                                    }
-                                )
-
+                                # Связываем только с уже существующими техниками ATT&CK
                                 graph.run(
                                     """
                                     MATCH (c:CAPEC {identifier: $capec_id}), (t:Technique {identifier: $mitre_id})
@@ -200,12 +192,7 @@ def mapping(graph):
                         mitre_id = re.search(r'ENTRY ID:T?(\d+(?:\.\d{3})?)', mapping_str)
                         if mitre_id:
                             mitre_id = "T" + mitre_id.group(1)
-                            graph.run(
-                                """
-                                MERGE (t:Technique {identifier: $mitre_id})
-                                """,
-                                {"mitre_id": mitre_id}
-                            )
+                            # Связываем только с уже существующими техниками ATT&CK
                             graph.run(
                                 """
                                 MATCH (c:CAPEC {identifier: $capec_id}), 

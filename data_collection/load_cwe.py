@@ -68,12 +68,7 @@ def load_cwe(graph, csv_url):
                         entry_id = re.search(r'ENTRY ID:(T\d+)', mapping)
                         if entry_id:
                             mitre_id = entry_id.group(1)
-                            graph.run(
-                                """
-                                MERGE (t:Technique {identifier: $mitre_id})
-                                """,
-                                {"mitre_id": mitre_id}
-                            )
+                            # Связываем только с уже существующими техниками ATT&CK
                             graph.run(
                                 """
                                 MATCH (w:CWE {identifier: $cwe_id}), (t:Technique {identifier: $mitre_id})
