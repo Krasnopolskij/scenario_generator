@@ -14,6 +14,11 @@ from tqdm import tqdm
 NVD_BASE = os.getenv("NVD_FEED_BASE", "https://nvd.nist.gov/feeds/json/cve/2.0")
 DEFAULT_CISA_KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 
+# Управление проверкой хеша фида: по умолчанию включена
+# Установите переменную окружения NVD_CHECK_HASH=false, чтобы принудительно выполнять импорт,
+# даже если хеш совпадает (используется фронтом при включении чекбокса «Принудительная перезапись данных о CVE»)
+CHECK_HASH = (os.getenv("NVD_CHECK_HASH", "true").strip().lower() in {"1", "true", "yes", "on"})
+
 # EPSS
 def _fetch_epss_batch(base_url: str, cve_batch: List[str]) -> Dict[str, Dict[str, Optional[float]]]:
     params = {"cve": ",".join(cve_batch)}
@@ -500,7 +505,8 @@ def import_year(graph: Graph, year: int, batch_size: int = 500):
 
     # Проверка хеша и пропуск импорта при отсутствии изменений
     hashes = read_hashes()
-    if hashes.get(str(year)) == digest:
+    # Если CHECK_HASH=false, игнорируем совпадение хеша и всегда импортируем
+    if (hashes.get(str(year)) == digest) and (CHECK_HASH):
         print(f"Фид не содержит изменений, база в актуальном состоянии. Импорт CVE за год {year} пропущен")
         return
     vulns = doc.get("vulnerabilities") or []

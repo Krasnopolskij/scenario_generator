@@ -109,6 +109,25 @@ button,
 .nav-link {
   transition: transform 0.12s ease, filter 0.12s ease, background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
 }
+/* Иконка справки «?» в кружке */
+.help-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 6px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--panel-elev);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: help;
+  user-select: none;
+}
+.help-icon:hover { background: var(--surface-soft); color: var(--text); }
 /* Лёгкое «подпрыгивание» при наведении */
 button:not(.insp-toggle):hover,
 .btn-link:hover,

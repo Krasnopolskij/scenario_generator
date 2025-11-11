@@ -70,7 +70,11 @@
     const skip = Array.from(form.querySelectorAll('input[name="skip"]:checked')).map(i => i.value);
     const yearRaw = (form.querySelector('#cve_from_year').value || '').trim();
     const cve_from_year = yearRaw ? parseInt(yearRaw, 10) : null;
-    return { only, skip, cve_from_year };
+    // Флажок принудительной перезаписи: при включении игнорируем проверку хеша
+    const forceCveEl = form.querySelector('#force_cve');
+    const force_cve = !!(forceCveEl && forceCveEl.checked);
+    const check_hash = !force_cve; // фронт шлёт check_hash=true/false, как ждёт бэкенд
+    return { only, skip, cve_from_year, check_hash, force_cve };
   }
 
   function updateDisable() {
@@ -195,6 +199,9 @@
       } else {
         const y = form.querySelector('#cve_from_year'); if (y) y.value = '';
       }
+      // восстановление чекбокса принудительной перезаписи
+      const fc = form.querySelector('#force_cve');
+      if (fc) fc.checked = !!data.force_cve;
       updateDisable();
     }
   } catch (e) { console.warn('ls load filters', e); }
@@ -202,6 +209,12 @@
   if (yearInput) {
     yearInput.addEventListener('input', () => {
       try { localStorage.setItem(LS_KEY, JSON.stringify(gatherValues())); } catch (e) { console.warn('ls save year', e); }
+    });
+  }
+  const forceInput = form.querySelector('#force_cve');
+  if (forceInput) {
+    forceInput.addEventListener('change', () => {
+      try { localStorage.setItem(LS_KEY, JSON.stringify(gatherValues())); } catch (e) { console.warn('ls save force', e); }
     });
   }
 
@@ -236,6 +249,7 @@
     output.textContent = '';
     form.querySelectorAll('input[name="only"], input[name="skip"]').forEach(cb => { cb.checked = false; cb.disabled = false; });
     const y = form.querySelector('#cve_from_year'); if (y) y.value = '';
+    const fc = form.querySelector('#force_cve'); if (fc) fc.checked = false;
     updateDisable();
     try { localStorage.removeItem(LS_KEY); } catch (e) { console.warn('ls clear filters', e); }
   });

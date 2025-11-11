@@ -195,7 +195,7 @@ def build_command(only: Optional[List[str]], skip: Optional[List[str]], cve_from
     return cmd
 
 
-def stream_process(cmd: List[str], run_id: str, tty_columns: Optional[int] = None, tty_rows: Optional[int] = None):
+def stream_process(cmd: List[str], run_id: str, tty_columns: Optional[int] = None, tty_rows: Optional[int] = None, extra_env: Optional[Dict[str, str]] = None):
     # POSIX: используем PTY, чтобы дочерний процесс видел TTY и tqdm печатал с \r
     if os.name != "nt":
         import pty
@@ -223,6 +223,13 @@ def stream_process(cmd: List[str], run_id: str, tty_columns: Optional[int] = Non
             env["LINES"] = str(int(tty_rows))
         else:
             env.setdefault("LINES", os.environ.get("UI_TTY_ROWS", "24"))
+        if extra_env:
+            # Принудительно строковые значения
+            for k, v in extra_env.items():
+                try:
+                    env[str(k)] = str(v)
+                except Exception:
+                    pass
         proc = subprocess.Popen(
             cmd,
             cwd=str(ROOT),
@@ -305,6 +312,7 @@ async def run_loader(request: Request):
     tty_columns = payload.get("columns")
     tty_rows = payload.get("rows")
     run_id = payload.get("run_id")
+    check_hash = payload.get("check_hash")
 
     if not isinstance(only, list) or not all(isinstance(x, str) for x in only):
         only = []
@@ -337,7 +345,11 @@ async def run_loader(request: Request):
     # В ответ добавим команду и run_id
     def generator():
         yield f"$ {' '.join(cmd)}\n[run_id: {run_id}]\n\n"
-        for chunk in stream_process(cmd, run_id, tty_columns=tty_columns, tty_rows=tty_rows):
+        extra_env = {}
+        # Если фронт передал check_hash=true/false, пробрасываем в env дочернего процесса
+        if isinstance(check_hash, bool):
+            extra_env["NVD_CHECK_HASH"] = "true" if check_hash else "false"
+        for chunk in stream_process(cmd, run_id, tty_columns=tty_columns, tty_rows=tty_rows, extra_env=extra_env or None):
             yield chunk
 
     return StreamingResponse(
