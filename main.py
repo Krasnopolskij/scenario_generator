@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, StreamingResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, StreamingResponse, JSONResponse, Response, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from py2neo import Graph
 from dotenv import load_dotenv
@@ -26,10 +26,13 @@ ui_dir = ROOT / "ui"
 static_dir = ui_dir / "static"
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
-
 @app.get("/")
 def index() -> FileResponse:
-    index_file = ui_dir / "index.html"
+    return RedirectResponse(url="/generation", status_code=307)
+
+@app.get("/data")
+def index() -> FileResponse:
+    index_file = ui_dir / "data.html"
     return FileResponse(str(index_file))
 
 
@@ -39,9 +42,9 @@ def cpe_page() -> FileResponse:
     return FileResponse(str(page))
 
 
-@app.get("/graph")
+@app.get("/generation")
 def graph_page() -> FileResponse:
-    page = ui_dir / "graph.html"
+    page = ui_dir / "generation.html"
     return FileResponse(str(page))
 
 
