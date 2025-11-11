@@ -135,20 +135,22 @@ def process_techniques(objects, graph):
                 ext_id = ext_id.upper().replace('_', '-')
                 try:
                     if link_type == 'CAPEC':
+                        # Не создаём заглушки CAPEC; только связываем, если такой CAPEC уже существует
                         graph.run(
                             f"""
                             MATCH (t {{identifier: $tech}})
-                            MERGE (n:{link_type} {{identifier: $ext_id}})
+                            MATCH (n:{link_type} {{identifier: $ext_id}})
                             MERGE (n)-[:{link_type}_TO_TECHNIQUE]->(t)
                             """,
                             tech=mitre_id,
                             ext_id=ext_id
                         )
                     else:
+                        # Аналогично для CWE: не создаём узлы здесь, они загружаются отдельным загрузчиком
                         graph.run(
                             f"""
                             MATCH (t {{identifier: $tech}})
-                            MERGE (n:{link_type} {{identifier: $ext_id}})
+                            MATCH (n:{link_type} {{identifier: $ext_id}})
                             MERGE (t)-[:TECHNIQUE_TO_{link_type}]->(n)
                             """,
                             tech=mitre_id,
