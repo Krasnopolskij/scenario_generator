@@ -283,7 +283,7 @@
     const uri = encodeURIComponent(pendingCpeToVisualize);
     closeModal();
     // Переходим на страницу графа, передаём cpe через query
-    window.location.href = `/graph?cpe=${uri}`;
+    window.location.href = `/generation?cpe=${uri}`;
   });
 
   function removePicked(cpe) {
