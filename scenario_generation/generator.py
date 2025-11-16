@@ -172,7 +172,9 @@ def generate_scenarios(
     # Тактики, которые исключаем из построения сценариев
     excluded_tactics_norm = {
         "reconnaissance",
-        "resource-development"
+        "resource-development",
+        "discovery",
+        "command-and-control"
     }
 
     def _norm(s: Any) -> str:

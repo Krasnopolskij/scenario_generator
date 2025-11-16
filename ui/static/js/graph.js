@@ -9,6 +9,7 @@
   const scMaxPerTacticInput = document.getElementById('sc-max-per-tactic');
   const viewModeSel = document.getElementById('view-mode');
   const showAllCves = document.getElementById('show-all-cves');
+  const closeAllKeys = document.getElementById('close-all-keys');
   const genScenariosBtn = document.getElementById('gen-scenarios');
   const clearScenariosBtn = document.getElementById('clear-scenarios');
   const scenariosList = document.getElementById('scenarios-list');
@@ -166,6 +167,18 @@
         themeBtn.title = 'Настройки отображения';
       }
     }
+    // Чекбокс «Замкнуть все ключи» имеет смысл только в Ч/Б профиле
+    if (closeAllKeys) {
+      const wrap = closeAllKeys.closest('.field') || closeAllKeys.parentElement;
+      if (profile === 'mono') {
+        if (wrap) wrap.style.display = '';
+        closeAllKeys.disabled = false;
+      } else {
+        if (wrap) wrap.style.display = 'none';
+        closeAllKeys.checked = false;
+        closeAllKeys.disabled = true;
+      }
+    }
   }
   function bindProfileUI() {
     if (profileBtn) profileBtn.addEventListener('click', () => { if (!profileBtn.disabled) setProfile(getProfile() === 'mono' ? 'color' : 'mono'); });
@@ -198,6 +211,7 @@
       case 'CPE': return 'octagon';
       case 'CWE': return 'diamond';
       case 'CAPEC': return 'pentagon';
+      case 'ScenarioEndpoint': return 'hexagon';
       default: return 'ellipse';
     }
   }
@@ -273,8 +287,8 @@
           'background-color': canvasColor,
           'border-width': 1,
           'border-color': '#9aa3b2',
-          'width': 6,
-          'height': 6,
+          'width': 5,
+          'height': 5,
           'label': '',
           'z-index': 1001
         }},
@@ -283,8 +297,8 @@
           'background-color': canvasColor,
           'border-width': 1,
           'border-color': '#9aa3b2',
-          'width': 6,
-          'height': 6,
+          'width': 5,
+          'height': 5,
           'label': '',
           'z-index': 1000
         }},
@@ -340,30 +354,24 @@
   function computeKeyGeometry(cvePos, targetPos, state) {
     try {
       const c = cvePos || { x: 0, y: 0 };
-      const t = targetPos || { x: 1, y: 0 };
-      let dx = Number(t.x) - Number(c.x);
-      let dy = Number(t.y) - Number(c.y);
-      let dist = Math.sqrt(dx * dx + dy * dy);
-      if (!isFinite(dist) || dist < 1e-3) { dist = 1; dx = 1; dy = 0; }
-      const ux = dx / dist;
-      const uy = dy / dist;
-      const leftRel = 0.30;
-      const rightRel = 0.45;
+      const t = targetPos || { x: c.x + 1, y: c.y };
+      const dx = Number(t.x) - Number(c.x);
+      const dir = (dx >= 0) ? 1 : -1;
+      const BASE_OFFSET = 30; // от центра CVE до левого контакта
+      const KEY_LEN = 16;     // длина перемычки ключа
       const left = {
-        x: c.x + ux * (dist * leftRel),
-        y: c.y + uy * (dist * leftRel),
+        x: c.x + dir * BASE_OFFSET,
+        y: c.y,
       };
       const right = {
-        x: c.x + ux * (dist * rightRel),
-        y: c.y + uy * (dist * rightRel),
+        x: left.x + dir * KEY_LEN,
+        y: left.y,
       };
       let pivot = { x: right.x, y: right.y };
       if (state === 'open') {
         const vx = right.x - left.x;
         const vy = right.y - left.y;
-        let len = Math.sqrt(vx * vx + vy * vy);
-        if (!isFinite(len) || len < 1e-3) len = 1;
-        const angle = -Math.PI / 6;
+        const angle = (dir >= 0) ? -Math.PI / 4 : Math.PI / 4;
         const cosA = Math.cos(angle);
         const sinA = Math.sin(angle);
         const rx = vx * cosA - vy * sinA;
@@ -428,6 +436,23 @@
     syncAllKeyPositions();
   }
 
+  function autoCloseBestKeys(kind) {
+    if (!cy) return;
+    const pivots = cy.nodes("[group='KeyPivot']");
+    if (!pivots || pivots.length === 0) return;
+    const byTech = new Map();
+    pivots.forEach(p => {
+      const techId = String(p.data('keyTechId') || '');
+      if (!techId) return;
+      const epss = Number(p.data('keyEpss') || 0);
+      const cur = byTech.get(techId);
+      if (!cur || epss > cur.epss) byTech.set(techId, { pivot: p, epss });
+    });
+    byTech.forEach(({ pivot }) => {
+      toggleKeyForPivot(pivot, kind);
+    });
+  }
+
   function toggleKeyForPivot(pivot, kind) {
     if (!pivot || !pivot.length) return;
     const techId = String(pivot.data('keyTechId') || '');
@@ -460,6 +485,7 @@
   function bindKeyClick(kind) {
     if (!cy) return;
     const handlerNode = (evt) => {
+      if (closeAllKeys && closeAllKeys.checked) return;
       const n = evt.target;
       if (!n || !n.length) return;
       const g = n.data('group');
@@ -474,6 +500,7 @@
       try { evt.stopPropagation(); } catch {}
     };
     const handlerEdge = (evt) => {
+      if (closeAllKeys && closeAllKeys.checked) return;
       const e = evt.target;
       if (!e || !e.length) return;
       const t = String(e.data('type') || '');
@@ -516,6 +543,11 @@
           const srcNode = cy.getElementById(src);
           const tgtNode = cy.getElementById(tgt);
           if (!srcNode.length || !tgtNode.length) { e.data('keyInited', true); return; }
+          let keyEpss = 0;
+          try {
+            const te = cy.edges(`[type = 'SC_TECH_TO_CVE'][source = '${techId}'][target = '${src}']`);
+            if (te && te.length > 0) keyEpss = Number(te[0].data('epss') || 0);
+          } catch {}
           const baseId = String(e.id() || `${src}_${tgt}`);
           const prefix = `k_${baseId}`;
           const leftId = `${prefix}_lc`;
@@ -526,7 +558,7 @@
           try {
             cy.add({ group: 'nodes', data: { id: leftId, label: '', group: 'KeyContact', keyPivotId: pivotId, keyTechId: techId, keyCveNodeId: src, keyTargetId: tgt }, position: geom.left, grabbable: false, selectable: false });
             cy.add({ group: 'nodes', data: { id: rightId, label: '', group: 'KeyContact', keyPivotId: pivotId, keyTechId: techId, keyCveNodeId: src, keyTargetId: tgt, keyRight: true }, position: geom.right, grabbable: false, selectable: false });
-            cy.add({ group: 'nodes', data: { id: pivotId, label: '', group: 'KeyPivot', keyState: 'open', keyTechId: techId, keyCveNodeId: src, keyTargetId: tgt, keyLeftId: leftId, keyRightId: rightId }, position: geom.pivot, grabbable: false, selectable: false });
+            cy.add({ group: 'nodes', data: { id: pivotId, label: '', group: 'KeyPivot', keyState: 'open', keyTechId: techId, keyCveNodeId: src, keyTargetId: tgt, keyLeftId: leftId, keyRightId: rightId, keyEpss: keyEpss }, position: geom.pivot, grabbable: false, selectable: false });
             cy.add({ group: 'edges', data: { id: `${prefix}_e1`, source: src, target: leftId, type: 'SC_KEY_SEG', keyTechId: techId, keyCveNodeId: src } });
             cy.add({ group: 'edges', data: { id: `${prefix}_e2`, source: leftId, target: pivotId, type: 'SC_KEY_SWITCH', keyTechId: techId, keyCveNodeId: src } });
             cy.add({ group: 'edges', data: { id: `${prefix}_e3`, source: rightId, target: tgt, type: 'SC_KEY_ARROW', keyTechId: techId, keyCveNodeId: src } });
@@ -535,46 +567,53 @@
         } catch {}
       });
       syncAllKeyPositions();
+      autoCloseBestKeys('linear');
     } catch {}
   }
 
-  function initPrimaryKeysForEdges() {
-    if (!cy) return;
-    if (getProfile() !== 'mono') return;
-    try {
-      const edges = cy.edges("[type='SC_GROUP']");
-      edges.forEach(e => {
-        try {
-          if (e.data('keyInited')) return;
-          const src = String(e.data('source') || e.source().id());
-          const tgt = String(e.data('target') || e.target().id());
-          const techId = String(e.data('stepTechId') || '');
-          const srcNode = cy.getElementById(src);
-          const tgtNode = cy.getElementById(tgt);
-          if (!srcNode.length || !tgtNode.length) { e.data('keyInited', true); return; }
-          // В первичном сценарии ключи нужны только для путей от CVE
-          if (String(srcNode.data('group')) !== 'CVE') { e.data('keyInited', true); return; }
-          const baseId = String(e.id() || `${src}_${tgt}`);
-          const prefix = `k_${baseId}`;
-          const leftId = `${prefix}_lc`;
-          const rightId = `${prefix}_rc`;
-          const pivotId = `${prefix}_pv`;
-          if (cy.getElementById(pivotId).length) { e.data('keyInited', true); return; }
-          const geom = computeKeyGeometry(srcNode.position(), tgtNode.position(), 'open');
-          try {
-            cy.add({ group: 'nodes', data: { id: leftId, label: '', group: 'KeyContact', keyPivotId: pivotId, keyTechId: techId, keyCveNodeId: src, keyTargetId: tgt }, position: geom.left, grabbable: false, selectable: false });
-            cy.add({ group: 'nodes', data: { id: rightId, label: '', group: 'KeyContact', keyPivotId: pivotId, keyTechId: techId, keyCveNodeId: src, keyTargetId: tgt, keyRight: true }, position: geom.right, grabbable: false, selectable: false });
-            cy.add({ group: 'nodes', data: { id: pivotId, label: '', group: 'KeyPivot', keyState: 'open', keyTechId: techId, keyCveNodeId: src, keyTargetId: tgt, keyLeftId: leftId, keyRightId: rightId }, position: geom.pivot, grabbable: false, selectable: false });
-            cy.add({ group: 'edges', data: { id: `${prefix}_e1`, source: src, target: leftId, type: 'SC_KEY_SEG', keyTechId: techId, keyCveNodeId: src } });
-            cy.add({ group: 'edges', data: { id: `${prefix}_e2`, source: leftId, target: pivotId, type: 'SC_KEY_SWITCH', keyTechId: techId, keyCveNodeId: src } });
-            cy.add({ group: 'edges', data: { id: `${prefix}_e3`, source: rightId, target: tgt, type: 'SC_KEY_ARROW', keyTechId: techId, keyCveNodeId: src } });
-          } catch {}
-          try { e.data('keyInited', true); } catch {}
-        } catch {}
-      });
-      syncAllKeyPositions();
-    } catch {}
-  }
+	  function initPrimaryKeysForEdges() {
+	    if (!cy) return;
+	    if (getProfile() !== 'mono') return;
+	    try {
+	      const edges = cy.edges("[type='SC_GROUP']");
+	      edges.forEach(e => {
+	        try {
+	          if (e.data('keyInited')) return;
+	          const src = String(e.data('source') || e.source().id());
+	          const tgt = String(e.data('target') || e.target().id());
+	          const techId = String(e.data('stepTechId') || '');
+	          const srcNode = cy.getElementById(src);
+	          const tgtNode = cy.getElementById(tgt);
+	          if (!srcNode.length || !tgtNode.length) { e.data('keyInited', true); return; }
+	          // В первичном сценарии ключи нужны только для путей от CVE
+	          if (String(srcNode.data('group')) !== 'CVE') { e.data('keyInited', true); return; }
+	          let keyEpss = 0;
+	          try {
+	            const te = cy.edges(`[type = 'SC_TECH_TO_CVE'][source = '${techId}'][target = '${src}']`);
+	            if (te && te.length > 0) keyEpss = Number(te[0].data('epss') || 0);
+	          } catch {}
+	          const baseId = String(e.id() || `${src}_${tgt}`);
+	          const prefix = `k_${baseId}`;
+	          const leftId = `${prefix}_lc`;
+	          const rightId = `${prefix}_rc`;
+	          const pivotId = `${prefix}_pv`;
+	          if (cy.getElementById(pivotId).length) { e.data('keyInited', true); return; }
+	          const geom = computeKeyGeometry(srcNode.position(), tgtNode.position(), 'open');
+	          try {
+	            cy.add({ group: 'nodes', data: { id: leftId, label: '', group: 'KeyContact', keyPivotId: pivotId, keyTechId: techId, keyCveNodeId: src, keyTargetId: tgt }, position: geom.left, grabbable: false, selectable: false });
+	            cy.add({ group: 'nodes', data: { id: rightId, label: '', group: 'KeyContact', keyPivotId: pivotId, keyTechId: techId, keyCveNodeId: src, keyTargetId: tgt, keyRight: true }, position: geom.right, grabbable: false, selectable: false });
+	            cy.add({ group: 'nodes', data: { id: pivotId, label: '', group: 'KeyPivot', keyState: 'open', keyTechId: techId, keyCveNodeId: src, keyTargetId: tgt, keyLeftId: leftId, keyRightId: rightId, keyEpss: keyEpss }, position: geom.pivot, grabbable: false, selectable: false });
+	            cy.add({ group: 'edges', data: { id: `${prefix}_e1`, source: src, target: leftId, type: 'SC_KEY_SEG', keyTechId: techId, keyCveNodeId: src } });
+	            cy.add({ group: 'edges', data: { id: `${prefix}_e2`, source: leftId, target: pivotId, type: 'SC_KEY_SWITCH', keyTechId: techId, keyCveNodeId: src } });
+	            cy.add({ group: 'edges', data: { id: `${prefix}_e3`, source: rightId, target: tgt, type: 'SC_KEY_ARROW', keyTechId: techId, keyCveNodeId: src } });
+	          } catch {}
+	          try { e.data('keyInited', true); } catch {}
+	        } catch {}
+	      });
+	      syncAllKeyPositions();
+	      autoCloseBestKeys('primary');
+	    } catch {}
+	  }
 
   function rerenderAccordingToProfile() {
     if (isScenarioView) {
@@ -1497,19 +1536,39 @@
     try { cy.edges("[type='SC_TECH_TO_CVE']").style('display', flag ? 'element' : 'none'); } catch {}
     try { cy.edges("[type='SC_STEP']").style('display', flag ? 'element' : 'none'); } catch {}
     try {
-      if (getProfile() === 'mono') {
+      const profile = getProfile();
+      if (profile === 'mono') {
         cy.nodes("[group='KeyContact']").style('display', flag ? 'element' : 'none');
         cy.nodes("[group='KeyPivot']").style('display', flag ? 'element' : 'none');
         cy.edges("[type='SC_KEY_SEG']").style('display', flag ? 'element' : 'none');
         cy.edges("[type='SC_KEY_SWITCH']").style('display', flag ? 'element' : 'none');
         cy.edges("[type='SC_KEY_ARROW']").style('display', flag ? 'element' : 'none');
-      }
-    } catch {}
-    // Прямые стрелки между техниками
-    try {
-      const profile = getProfile();
-      if (profile === 'mono') {
-        cy.edges("[type='SC_GROUP_LINK']").style('display', flag ? 'none' : 'element');
+
+        // Прямые стрелки между техниками и служебными узлами
+        const links = cy.edges("[type='SC_GROUP_LINK']");
+        links.style('display', flag ? 'none' : 'element');
+
+        // Стрелка от Н до первой техники должна быть видна всегда
+        try { cy.edges("[type='SC_GROUP_LINK'][source='sc_start']").style('display', 'element'); } catch {}
+
+        // Стрелка от последнего шага до К:
+        // - при скрытых CVE (flag=false) всегда показываем прямую стрелку;
+        // - при показанных CVE прячем её только если есть ключевые стрелки к К.
+        try {
+          const endLink = cy.edges("[type='SC_GROUP_LINK'][target='sc_end']");
+          if (endLink && endLink.length) {
+            if (!flag) {
+              endLink.style('display', 'element');
+            } else {
+              let hasKeyToEnd = false;
+              try {
+                const keyToEnd = cy.edges("[type='SC_KEY_ARROW'][target='sc_end']");
+                hasKeyToEnd = keyToEnd && keyToEnd.length > 0;
+              } catch {}
+              endLink.style('display', hasKeyToEnd ? 'none' : 'element');
+            }
+          }
+        } catch {}
       } else {
         cy.edges("[type='SC_GROUP_LINK']").style('display', 'element');
       }
@@ -1722,12 +1781,12 @@
     return elements;
   }
 
-	  // ч/б сценарий, CVE вертикально справа от соответствующей техники
-	  function buildScenarioElementsMono(sc) {
-	    const GAP_X = 160;
-	    const TECH_Y = 100;
-	    const CVE_OFFSET_X = Math.round(GAP_X * 0.35);
-	    const CVE_GAP_Y = 54;
+  // ч/б сценарий, CVE вертикально справа от соответствующей техники
+  function buildScenarioElementsMono(sc) {
+    const GAP_X = 160;
+    const TECH_Y = 100;
+    const CVE_OFFSET_X = Math.round(GAP_X * 0.35);
+    const CVE_GAP_Y = 54;
     const elements = [];
     const steps = sc.steps || [];
 
@@ -1754,6 +1813,28 @@
       }
     }
 
+    // Служебные узлы начала и конца маршрута
+    const startId = 'sc_start';
+    const endId = 'sc_end';
+    if (steps.length > 0) {
+      const firstX = 0;
+      const lastX = (steps.length - 1) * GAP_X;
+      elements.push({ data: { id: startId, label: 'Н', group: 'ScenarioEndpoint' }, position: { x: firstX - GAP_X * 0.7, y: TECH_Y } });
+      elements.push({ data: { id: endId, label: 'К', group: 'ScenarioEndpoint' }, position: { x: lastX + GAP_X, y: TECH_Y } });
+      const firstStep = steps[0];
+      if (firstStep && firstStep.technique && firstStep.technique.id) {
+        const firstTid = String(firstStep.technique.id);
+        const eidStart = `sc_tt_${startId}_${firstTid}`;
+        elements.push({ data: { id: eidStart, source: startId, target: firstTid, type: 'SC_GROUP_LINK' } });
+      }
+      const lastStep = steps[steps.length - 1];
+      if (lastStep && lastStep.technique && lastStep.technique.id) {
+        const lastTid = String(lastStep.technique.id);
+        const eidEnd = `sc_tt_${lastTid}_${endId}`;
+        elements.push({ data: { id: eidEnd, source: lastTid, target: endId, type: 'SC_GROUP_LINK' } });
+      }
+    }
+
     // Для каждой техники отдельная колонка CVE справа
     for (let i = 0; i < steps.length; i++) {
       const st = steps[i]; const t = st.technique; if (!t || !t.id) continue;
@@ -1768,11 +1849,16 @@
         elements.push({ data:{ id, label:'CVE', group:'CVE', raw: cv, cvss: cvss, techId: tid }, position:{ x, y } });
         const eid = `tc_${tid}_${cid}`; const epss = Number((cv.props && cv.props.epss) || 0);
         elements.push({ data:{ id:eid, source: tid, target: id, type:'SC_TECH_TO_CVE', epss: epss } });
-        // связь CVE -> следующая техника (если есть)
-        if (i < steps.length - 1) {
-          const nextTid = String(steps[i+1].technique.id);
-          const e2 = `cv_${tid}_${cid}_to_${nextTid}`;
-          elements.push({ data:{ id: e2, source: id, target: nextTid, type: 'SC_STEP', stepTechId: tid } });
+        // связь CVE -> следующая техника или служебный конец
+        let targetId = null;
+        if (i < steps.length - 1 && steps[i+1].technique && steps[i+1].technique.id) {
+          targetId = String(steps[i+1].technique.id);
+        } else {
+          targetId = endId;
+        }
+        if (targetId) {
+          const e2 = `cv_${tid}_${cid}_to_${targetId}`;
+          elements.push({ data:{ id: e2, source: id, target: targetId, type: 'SC_STEP', stepTechId: tid } });
         }
       }
     }
@@ -1947,6 +2033,30 @@
       const th = loadTheme(); if (th) applyTheme(th);
     }
   });
+  if (closeAllKeys) closeAllKeys.addEventListener('change', () => {
+    if (!cy) return;
+    const kind = (isScenarioView && currentScenarioId === 'PRIMARY') ? 'primary' : 'linear';
+    try {
+      const pivots = cy.nodes("[group='KeyPivot']");
+      if (!pivots || pivots.length === 0) return;
+      if (closeAllKeys.checked) {
+        // Замкнуть все ключи без ограничения по технике
+        pivots.forEach(p => {
+          p.data('keyState', 'closed');
+          if (kind === 'primary') primaryClosedKeyByTechnique.set(String(p.data('keyTechId') || ''), String(p.id()));
+          else linearClosedKeyByTechnique.set(String(p.data('keyTechId') || ''), String(p.id()));
+          syncKeyPositionsForPivot(p);
+        });
+      } else {
+        // Вернуть поведение по умолчанию и автозамкнуть один ключ на шаг
+        if (kind === 'primary') primaryClosedKeyByTechnique = new Map();
+        else linearClosedKeyByTechnique = new Map();
+        pivots.forEach(p => { p.data('keyState', 'open'); });
+        syncAllKeyPositions();
+        autoCloseBestKeys(kind);
+      }
+    } catch {}
+  });
 
   // первичный сценарий (primary) — визуализация групп тактик
   function renderPrimaryCard(data) {
@@ -2048,20 +2158,34 @@
   }
 
 	  function buildPrimaryElements(mega) {
-	    const COL_GAP = (getProfile() === 'mono') ? 210 : 160;
-    const ROW_GAP=70, TOP_Y=80, CENTER_Y=150; const elements=[]; const cols=(mega||[]).slice().sort((a,b)=>(a.tactic_order||0)-(b.tactic_order||0));
-    const groupIds=[];
-    for (let ci=0; ci<cols.length; ci++) {
-      const col = cols[ci]; const gid = `tg_${ci}`; groupIds.push(gid);
-      const tgLabel = translateTacticName(col.tactic);
-      elements.push({ data: { id: gid, label: String(tgLabel||''), group:'TacticGroup' }, position: { x: ci*COL_GAP, y: TOP_Y } });
-      const items = col.techniques || [];
-      for (let ri=0; ri<items.length; ri++) { const st=items[ri]; const t=st.technique; if (!t||!t.id) continue; const x=ci*COL_GAP; const y=CENTER_Y + (ri - (items.length-1)/2)*ROW_GAP; elements.push({ data: { id:String(t.id), label:'T', group:'Technique', raw:t, parent: gid }, position:{x,y} }); }
-    }
-    // Простые связи между соседними группами (скрываются при показе CVE)
-    for (let i=0; i<groupIds.length-1; i++) { const s=groupIds[i], t=groupIds[i+1]; const eid=`sc_group_${i}_${i+1}`; elements.push({ data: { id:eid, source:s, target:t, type:'SC_GROUP_LINK' } }); }
-    return elements;
-  }
+	    const isMono = (getProfile() === 'mono');
+	    const COL_GAP = isMono ? 210 : 160;
+	    const ROW_GAP=70, TOP_Y=80, CENTER_Y=150; const elements=[]; const cols=(mega||[]).slice().sort((a,b)=>(a.tactic_order||0)-(b.tactic_order||0));
+	    const groupIds=[];
+	    for (let ci=0; ci<cols.length; ci++) {
+	      const col = cols[ci]; const gid = `tg_${ci}`; groupIds.push(gid);
+	      const tgLabel = translateTacticName(col.tactic);
+	      elements.push({ data: { id: gid, label: String(tgLabel||''), group:'TacticGroup' }, position: { x: ci*COL_GAP, y: TOP_Y } });
+	      const items = col.techniques || [];
+	      for (let ri=0; ri<items.length; ri++) { const st=items[ri]; const t=st.technique; if (!t||!t.id) continue; const x=ci*COL_GAP; const y=CENTER_Y + (ri - (items.length-1)/2)*ROW_GAP; elements.push({ data: { id:String(t.id), label:'T', group:'Technique', raw:t, parent: gid }, position:{x,y} }); }
+	    }
+	    // Служебные узлы начала и конца маршрута только в ч/б профиле
+	    if (isMono && groupIds.length > 0) {
+	      const startId = 'pg_start';
+	      const endId = 'pg_end';
+	      const firstX = 0;
+	      const lastX = (groupIds.length - 1) * COL_GAP;
+	      elements.push({ data: { id: startId, label: 'Н', group:'ScenarioEndpoint' }, position: { x: firstX - COL_GAP * 0.7, y: CENTER_Y } });
+	      elements.push({ data: { id: endId, label: 'К', group:'ScenarioEndpoint' }, position: { x: lastX + COL_GAP, y: CENTER_Y } });
+	      const firstGid = groupIds[0];
+	      const lastGid = groupIds[groupIds.length - 1];
+	      elements.push({ data: { id: `sc_group_start_${firstGid}`, source: startId, target: firstGid, type:'SC_GROUP_LINK' } });
+	      elements.push({ data: { id: `sc_group_${lastGid}_end`, source: lastGid, target: endId, type:'SC_GROUP_LINK' } });
+	    }
+	    // Простые связи между соседними группами (скрываются при показе CVE)
+	    for (let i=0; i<groupIds.length-1; i++) { const s=groupIds[i], t=groupIds[i+1]; const eid=`sc_group_${i}_${i+1}`; elements.push({ data: { id:eid, source:s, target:t, type:'SC_GROUP_LINK' } }); }
+	    return elements;
+	  }
 
   function showPrimaryGroupDetails(groupEle) {
     // Удаляем прежние CVE узлы и связи к ним
@@ -2090,18 +2214,22 @@
           try { cy.add({ group:'nodes', data:{ id: nodeId, label:'CVE', group:'CVE', raw: cv, cvss: cvss }, position:{ x, y } }); } catch {}
         }
         const eid = `pg_tc_${tid}_${cid}`;
-        if (cy.getElementById(eid).length === 0) {
-          const epss = Number((cv.props && cv.props.epss) || 0);
-          try { cy.add({ group:'edges', data:{ id: eid, source: tid, target: nodeId, type: 'SC_TECH_TO_CVE', epss: epss } }); } catch {}
-        }
-        // Добавим связь CVE -> следующая тактика
-        const nextG = findNextTacticGroup(groupEle);
-        if (nextG) {
-          const e2 = `pg_cv_${tid}_${cid}_to_${nextG.id()}`;
-          if (cy.getElementById(e2).length === 0) {
-            try { cy.add({ group:'edges', data:{ id: e2, source: nodeId, target: nextG.id(), type: 'SC_GROUP', stepTechId: tid } }); } catch {}
-          }
-        }
+	        if (cy.getElementById(eid).length === 0) {
+	          const epss = Number((cv.props && cv.props.epss) || 0);
+	          try { cy.add({ group:'edges', data:{ id: eid, source: tid, target: nodeId, type: 'SC_TECH_TO_CVE', epss: epss } }); } catch {}
+	        }
+	        // Добавим связь CVE -> следующая тактика
+	        const profileMono = (getProfile() === 'mono');
+	        const nextG = findNextTacticGroup(groupEle);
+	        let targetId = null;
+	        if (nextG) targetId = nextG.id();
+	        else if (profileMono) targetId = 'pg_end';
+	        if (targetId) {
+	          const e2 = `pg_cv_${tid}_${cid}_to_${targetId}`;
+	          if (cy.getElementById(e2).length === 0) {
+	            try { cy.add({ group:'edges', data:{ id: e2, source: nodeId, target: targetId, type: 'SC_GROUP', stepTechId: tid } }); } catch {}
+	          }
+	        }
       }
     });
     // Если показаны CVE, скрываем прямые связи только для этой тактики
@@ -2114,8 +2242,8 @@
 	  function addCVEsForTechnique(techEle) {
     const tid = String(techEle.id());
 	    const st = primaryStepByTechId.get(tid); if (!st) return;
-	    const list = Array.isArray(st.cves) ? st.cves : [];
-	    const base = techEle.position(); const x = base.x + ((getProfile() === 'mono') ? 80 : 70); const CVE_GAP_Y = 54;
+		    const list = Array.isArray(st.cves) ? st.cves : [];
+		    const base = techEle.position(); const x = base.x + ((getProfile() === 'mono') ? 80 : 70); const CVE_GAP_Y = 54;
     const usedY2 = [];
     const placeY2 = (y) => { const MIN=44, STEP=6; let dy=0, dir=1, it=0, yy=y; while (usedY2.some(v=>Math.abs(v-yy)<MIN) && it<200) { yy = y + dir*dy; dir=-dir; dy+=STEP; it++; } usedY2.push(yy); return yy; };
     for (let i = 0; i < list.length; i++) {
@@ -2131,13 +2259,17 @@
         const epss = Number((cv.props && cv.props.epss) || 0);
         try { cy.add({ group:'edges', data:{ id: eid, source: tid, target: nodeId, type: 'SC_TECH_TO_CVE', epss: epss } }); } catch {}
       }
-      const nextG = findNextTacticGroup(techEle.parent());
-      if (nextG) {
-        const e2 = `pg_cv_${tid}_${cid}_to_${nextG.id()}`;
-        if (cy.getElementById(e2).length === 0) {
-          try { cy.add({ group:'edges', data:{ id: e2, source: nodeId, target: nextG.id(), type: 'SC_GROUP', stepTechId: tid } }); } catch {}
-        }
-      }
+	      const profileMono = (getProfile() === 'mono');
+	      const nextG = findNextTacticGroup(techEle.parent());
+	      let targetId = null;
+	      if (nextG) targetId = nextG.id();
+	      else if (profileMono) targetId = 'pg_end';
+	      if (targetId) {
+	        const e2 = `pg_cv_${tid}_${cid}_to_${targetId}`;
+	        if (cy.getElementById(e2).length === 0) {
+	          try { cy.add({ group:'edges', data:{ id: e2, source: nodeId, target: targetId, type: 'SC_GROUP', stepTechId: tid } }); } catch {}
+	        }
+	      }
     }
     // Если показаны CVE — скрываем прямые связи только для этой тактики
     try { hideGroupLinkFromGroup(techEle.parent().id()); } catch {}
@@ -2145,7 +2277,36 @@
     if (getProfile() === 'mono') initPrimaryKeysForEdges();
   }
 
-  function setGroupLinksVisible(flag) { try { cy.elements("edge[type='SC_GROUP_LINK']").style('display', flag ? 'element' : 'none'); } catch {} }
+  function setGroupLinksVisible(flag) {
+    try {
+      const edges = cy.edges("[type='SC_GROUP_LINK']");
+      edges.forEach(e => {
+        const src = String(e.data('source') || (e.source && e.source().id && e.source().id()) || '');
+        const tgt = String(e.data('target') || (e.target && e.target().id && e.target().id()) || '');
+        const isStartEdge = (src === 'pg_start' || src === 'sc_start');
+        const isEndEdge = (tgt === 'pg_end' || tgt === 'sc_end');
+        if (isStartEdge) {
+          // Стрелка от Н к первой тактике/технике всегда видна
+          e.style('display', 'element');
+        } else if (isEndEdge) {
+          if (!flag) {
+            // Показаны CVE/ключи: прячем прямую стрелку, если есть ключевые стрелки к К
+            let hasKeys = false;
+            try {
+              const keyToEnd = cy.edges("[type='SC_KEY_ARROW'][target='pg_end']");
+              hasKeys = keyToEnd && keyToEnd.length > 0;
+            } catch {}
+            e.style('display', hasKeys ? 'none' : 'element');
+          } else {
+            // CVE скрыты: всегда показываем прямую стрелку к К
+            e.style('display', 'element');
+          }
+        } else {
+          e.style('display', flag ? 'element' : 'none');
+        }
+      });
+    } catch {}
+  }
   function hideGroupLinkFromGroup(gid) {
     try { cy.edges(`[type = 'SC_GROUP_LINK'][source = '${gid}']`).style('display','none'); } catch {}
   }
