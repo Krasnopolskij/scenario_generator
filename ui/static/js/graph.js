@@ -61,6 +61,11 @@
   const scenarioShowBtns = new Map();
   let currentScenarioData = null; // выбранный сценарий для повторной перерисовки
   let lastMega = null; // mega для первичного сценария
+  // Состояние ключей в сценариях
+  let linearClosedKeyByTechnique = new Map();
+  let primaryClosedKeyByTechnique = new Map();
+  let followKeysHandler = null;
+  let syncingKeys = false;
 
   // Перевод названий тактик ATT&CK для отображения
   function translateTacticName(name) {
@@ -242,6 +247,7 @@
     const lblColor = labelColorFromCss();
     const muted = mutedColorFromCss();
     const isLightMode = (getUiThemeMode() === 'light');
+    const canvasColor = cssVar('--canvas', '#f2f4fb');
     if (profile === 'mono') {
       return [
         { selector: 'node', style: {
@@ -262,15 +268,38 @@
           'height': ele => (ele.data('group') === 'Technique' ? 50 : (ele.data('group') === 'CVE' ? 40 : 46)),
           'padding': 0
         }},
+        { selector: 'node[group="KeyContact"]', style: {
+          'shape': 'ellipse',
+          'background-color': canvasColor,
+          'border-width': 1,
+          'border-color': '#9aa3b2',
+          'width': 6,
+          'height': 6,
+          'label': '',
+          'z-index': 1001
+        }},
+        { selector: 'node[group="KeyPivot"]', style: {
+          'shape': 'ellipse',
+          'background-color': canvasColor,
+          'border-width': 1,
+          'border-color': '#9aa3b2',
+          'width': 6,
+          'height': 6,
+          'label': '',
+          'z-index': 1000
+        }},
         { selector: 'node[group="TechLabel"]', style: { 'background-opacity': 0, 'border-width': 0, 'label': 'data(label)', 'font-size': 11, 'color': muted, 'text-halign': 'center', 'text-valign':'center', 'events': 'no' }},
         { selector: 'node[group="TacticGroup"]', style: { 'shape': 'round-rectangle', 'background-color':'#e7e9f0', 'background-opacity': 1, 'label': 'data(label)', 'text-valign': 'top', 'text-halign':'center', 'border-color': '#bfc6d8', 'border-width': 1, 'padding': 14, 'color': muted }},
         { selector: 'node.sel', style: { 'border-width': 5, 'border-color':'#000000', 'z-index': 999 }},
         { selector: 'node.neigh', style: { 'border-width': 2, 'border-color': '#9aa3b9' }},
         { selector: 'edge', style: { 'curve-style':'bezier','target-arrow-shape':'none','line-color':'#9aa3b2','width': 1.2,'opacity': 0.9 }},
         { selector: 'edge[type="SC_TECH_TO_CVE"]', style: { 'line-color':'#9aa3b2', 'width': ele => epssWidth(ele.data('epss') || ele.data('EPSS') || 0) }},
-        { selector: 'edge[type="SC_STEP"]', style: { 'target-arrow-shape': 'triangle', 'target-arrow-color': '#9aa3b2' }},
-        { selector: 'edge[type="SC_GROUP"]', style: { 'target-arrow-shape': 'triangle', 'target-arrow-color': '#9aa3b2' }},
+        { selector: 'edge[type="SC_STEP"]', style: { 'opacity': 0, 'line-opacity': 0, 'target-arrow-shape': 'none' }},
+        { selector: 'edge[type="SC_GROUP"]', style: { 'opacity': 0, 'line-opacity': 0, 'target-arrow-shape': 'none' }},
         { selector: 'edge[type="SC_GROUP_LINK"]', style: { 'target-arrow-shape': 'triangle', 'target-arrow-color': '#9aa3b2' }},
+        { selector: 'edge[type="SC_KEY_SEG"]', style: { 'line-color':'#9aa3b2', 'width': 1.2 }},
+        { selector: 'edge[type="SC_KEY_SWITCH"]', style: { 'line-color':'#9aa3b2', 'width': 1.4 }},
+        { selector: 'edge[type="SC_KEY_ARROW"]', style: { 'line-color':'#9aa3b2', 'width': 1.2, 'target-arrow-shape': 'triangle', 'target-arrow-color': '#9aa3b2' }},
       ];
     }
     return [
@@ -305,6 +334,246 @@
       { selector: 'edge[type="SC_GROUP"]', style: { 'target-arrow-shape': 'triangle', 'target-arrow-color': '#8e44ad' }},
       { selector: 'edge[type="SC_GROUP_LINK"]', style: { 'target-arrow-shape': 'triangle', 'target-arrow-color': '#7f8c8d' }},
     ];
+  }
+
+  // Геометрия ключа между CVE и следующим шагом
+  function computeKeyGeometry(cvePos, targetPos, state) {
+    try {
+      const c = cvePos || { x: 0, y: 0 };
+      const t = targetPos || { x: 1, y: 0 };
+      let dx = Number(t.x) - Number(c.x);
+      let dy = Number(t.y) - Number(c.y);
+      let dist = Math.sqrt(dx * dx + dy * dy);
+      if (!isFinite(dist) || dist < 1e-3) { dist = 1; dx = 1; dy = 0; }
+      const ux = dx / dist;
+      const uy = dy / dist;
+      const leftRel = 0.30;
+      const rightRel = 0.45;
+      const left = {
+        x: c.x + ux * (dist * leftRel),
+        y: c.y + uy * (dist * leftRel),
+      };
+      const right = {
+        x: c.x + ux * (dist * rightRel),
+        y: c.y + uy * (dist * rightRel),
+      };
+      let pivot = { x: right.x, y: right.y };
+      if (state === 'open') {
+        const vx = right.x - left.x;
+        const vy = right.y - left.y;
+        let len = Math.sqrt(vx * vx + vy * vy);
+        if (!isFinite(len) || len < 1e-3) len = 1;
+        const angle = -Math.PI / 6;
+        const cosA = Math.cos(angle);
+        const sinA = Math.sin(angle);
+        const rx = vx * cosA - vy * sinA;
+        const ry = vx * sinA + vy * cosA;
+        pivot = {
+          x: left.x + rx,
+          y: left.y + ry,
+        };
+      }
+      return { left, right, pivot };
+    } catch {
+      return { left: cvePos, right: targetPos, pivot: targetPos };
+    }
+  }
+
+  function syncKeyPositionsForPivot(pivot) {
+    if (!cy || !pivot || !pivot.length) return;
+    try {
+      const cveId = String(pivot.data('keyCveNodeId') || '');
+      const targetId = String(pivot.data('keyTargetId') || '');
+      const leftId = String(pivot.data('keyLeftId') || '');
+      const rightId = String(pivot.data('keyRightId') || '');
+      if (!cveId || !targetId || !leftId || !rightId) return;
+      const cve = cy.getElementById(cveId);
+      const target = cy.getElementById(targetId);
+      const left = cy.getElementById(leftId);
+      const right = cy.getElementById(rightId);
+      if (!cve.length || !target.length || !left.length || !right.length) return;
+      const state = pivot.data('keyState') === 'closed' ? 'closed' : 'open';
+      const geom = computeKeyGeometry(cve.position(), target.position(), state);
+      left.position(geom.left);
+      right.position(geom.right);
+      pivot.position(geom.pivot);
+    } catch {}
+  }
+
+  function syncAllKeyPositions() {
+    if (!cy) return;
+    if (syncingKeys) return;
+    syncingKeys = true;
+    try {
+      const pivots = cy.nodes("[group='KeyPivot']");
+      if (!pivots || pivots.length === 0) return;
+      pivots.forEach(p => syncKeyPositionsForPivot(p));
+    } catch {} finally {
+      syncingKeys = false;
+    }
+  }
+
+  function bindKeyFollow() {
+    if (!cy) return;
+    if (followKeysHandler) {
+      try { cy.off('position', 'node', followKeysHandler); } catch {}
+    }
+    followKeysHandler = (evt) => {
+      try {
+        if (syncingKeys) return;
+        syncAllKeyPositions();
+      } catch {}
+    };
+    cy.on('position', 'node', followKeysHandler);
+    syncAllKeyPositions();
+  }
+
+  function toggleKeyForPivot(pivot, kind) {
+    if (!pivot || !pivot.length) return;
+    const techId = String(pivot.data('keyTechId') || '');
+    if (!techId) {
+      pivot.data('keyState', pivot.data('keyState') === 'closed' ? 'open' : 'closed');
+      syncKeyPositionsForPivot(pivot);
+      return;
+    }
+    const map = (kind === 'primary') ? primaryClosedKeyByTechnique : linearClosedKeyByTechnique;
+    const curState = pivot.data('keyState') === 'closed' ? 'closed' : 'open';
+    if (curState === 'closed') {
+      pivot.data('keyState', 'open');
+      if (map.get(techId) === String(pivot.id())) map.delete(techId);
+      syncKeyPositionsForPivot(pivot);
+      return;
+    }
+    const prevId = map.get(techId);
+    if (prevId && prevId !== String(pivot.id())) {
+      const prev = cy ? cy.getElementById(prevId) : null;
+      if (prev && prev.length) {
+        prev.data('keyState', 'open');
+        syncKeyPositionsForPivot(prev);
+      }
+    }
+    map.set(techId, String(pivot.id()));
+    pivot.data('keyState', 'closed');
+    syncKeyPositionsForPivot(pivot);
+  }
+
+  function bindKeyClick(kind) {
+    if (!cy) return;
+    const handlerNode = (evt) => {
+      const n = evt.target;
+      if (!n || !n.length) return;
+      const g = n.data('group');
+      if (g !== 'KeyContact' && g !== 'KeyPivot') return;
+      let pivotId = '';
+      if (g === 'KeyPivot') pivotId = String(n.id());
+      else pivotId = String(n.data('keyPivotId') || '');
+      if (!pivotId) return;
+      const pivot = cy.getElementById(pivotId);
+      if (!pivot || !pivot.length) return;
+      toggleKeyForPivot(pivot, kind);
+      try { evt.stopPropagation(); } catch {}
+    };
+    const handlerEdge = (evt) => {
+      const e = evt.target;
+      if (!e || !e.length) return;
+      const t = String(e.data('type') || '');
+      if (t !== 'SC_KEY_SEG' && t !== 'SC_KEY_SWITCH' && t !== 'SC_KEY_ARROW') return;
+      let pivotId = '';
+      const src = e.source(); const tgt = e.target();
+      if (src && src.length) {
+        if (src.data('group') === 'KeyPivot') pivotId = String(src.id());
+        else if (src.data('group') === 'KeyContact') pivotId = String(src.data('keyPivotId') || '');
+      }
+      if (!pivotId && tgt && tgt.length) {
+        if (tgt.data('group') === 'KeyPivot') pivotId = String(tgt.id());
+        else if (tgt.data('group') === 'KeyContact') pivotId = String(tgt.data('keyPivotId') || '');
+      }
+      if (!pivotId) return;
+      const pivot = cy.getElementById(pivotId);
+      if (!pivot || !pivot.length) return;
+      toggleKeyForPivot(pivot, kind);
+      try { evt.stopPropagation(); } catch {}
+    };
+    try { cy.off('tap', 'node[group=\"KeyContact\"]', handlerNode); } catch {}
+    try { cy.off('tap', 'node[group=\"KeyPivot\"]', handlerNode); } catch {}
+    try { cy.off('tap', 'edge', handlerEdge); } catch {}
+    cy.on('tap', 'node[group=\"KeyContact\"]', handlerNode);
+    cy.on('tap', 'node[group=\"KeyPivot\"]', handlerNode);
+    cy.on('tap', 'edge', handlerEdge);
+  }
+
+  function initScenarioKeysLinear() {
+    if (!cy) return;
+    if (getProfile() !== 'mono') return;
+    try {
+      const edges = cy.edges("[type='SC_STEP']");
+      edges.forEach(e => {
+        try {
+          if (e.data('keyInited')) return;
+          const src = String(e.data('source') || e.source().id());
+          const tgt = String(e.data('target') || e.target().id());
+          const techId = String(e.data('stepTechId') || '');
+          const srcNode = cy.getElementById(src);
+          const tgtNode = cy.getElementById(tgt);
+          if (!srcNode.length || !tgtNode.length) { e.data('keyInited', true); return; }
+          const baseId = String(e.id() || `${src}_${tgt}`);
+          const prefix = `k_${baseId}`;
+          const leftId = `${prefix}_lc`;
+          const rightId = `${prefix}_rc`;
+          const pivotId = `${prefix}_pv`;
+          if (cy.getElementById(pivotId).length) { e.data('keyInited', true); return; }
+          const geom = computeKeyGeometry(srcNode.position(), tgtNode.position(), 'open');
+          try {
+            cy.add({ group: 'nodes', data: { id: leftId, label: '', group: 'KeyContact', keyPivotId: pivotId, keyTechId: techId, keyCveNodeId: src, keyTargetId: tgt }, position: geom.left, grabbable: false, selectable: false });
+            cy.add({ group: 'nodes', data: { id: rightId, label: '', group: 'KeyContact', keyPivotId: pivotId, keyTechId: techId, keyCveNodeId: src, keyTargetId: tgt, keyRight: true }, position: geom.right, grabbable: false, selectable: false });
+            cy.add({ group: 'nodes', data: { id: pivotId, label: '', group: 'KeyPivot', keyState: 'open', keyTechId: techId, keyCveNodeId: src, keyTargetId: tgt, keyLeftId: leftId, keyRightId: rightId }, position: geom.pivot, grabbable: false, selectable: false });
+            cy.add({ group: 'edges', data: { id: `${prefix}_e1`, source: src, target: leftId, type: 'SC_KEY_SEG', keyTechId: techId, keyCveNodeId: src } });
+            cy.add({ group: 'edges', data: { id: `${prefix}_e2`, source: leftId, target: pivotId, type: 'SC_KEY_SWITCH', keyTechId: techId, keyCveNodeId: src } });
+            cy.add({ group: 'edges', data: { id: `${prefix}_e3`, source: rightId, target: tgt, type: 'SC_KEY_ARROW', keyTechId: techId, keyCveNodeId: src } });
+          } catch {}
+          try { e.data('keyInited', true); e.style('display', 'none'); } catch {}
+        } catch {}
+      });
+      syncAllKeyPositions();
+    } catch {}
+  }
+
+  function initPrimaryKeysForEdges() {
+    if (!cy) return;
+    if (getProfile() !== 'mono') return;
+    try {
+      const edges = cy.edges("[type='SC_GROUP']");
+      edges.forEach(e => {
+        try {
+          if (e.data('keyInited')) return;
+          const src = String(e.data('source') || e.source().id());
+          const tgt = String(e.data('target') || e.target().id());
+          const techId = String(e.data('stepTechId') || '');
+          const srcNode = cy.getElementById(src);
+          const tgtNode = cy.getElementById(tgt);
+          if (!srcNode.length || !tgtNode.length) { e.data('keyInited', true); return; }
+          // В первичном сценарии ключи нужны только для путей от CVE
+          if (String(srcNode.data('group')) !== 'CVE') { e.data('keyInited', true); return; }
+          const baseId = String(e.id() || `${src}_${tgt}`);
+          const prefix = `k_${baseId}`;
+          const leftId = `${prefix}_lc`;
+          const rightId = `${prefix}_rc`;
+          const pivotId = `${prefix}_pv`;
+          if (cy.getElementById(pivotId).length) { e.data('keyInited', true); return; }
+          const geom = computeKeyGeometry(srcNode.position(), tgtNode.position(), 'open');
+          try {
+            cy.add({ group: 'nodes', data: { id: leftId, label: '', group: 'KeyContact', keyPivotId: pivotId, keyTechId: techId, keyCveNodeId: src, keyTargetId: tgt }, position: geom.left, grabbable: false, selectable: false });
+            cy.add({ group: 'nodes', data: { id: rightId, label: '', group: 'KeyContact', keyPivotId: pivotId, keyTechId: techId, keyCveNodeId: src, keyTargetId: tgt, keyRight: true }, position: geom.right, grabbable: false, selectable: false });
+            cy.add({ group: 'nodes', data: { id: pivotId, label: '', group: 'KeyPivot', keyState: 'open', keyTechId: techId, keyCveNodeId: src, keyTargetId: tgt, keyLeftId: leftId, keyRightId: rightId }, position: geom.pivot, grabbable: false, selectable: false });
+            cy.add({ group: 'edges', data: { id: `${prefix}_e1`, source: src, target: leftId, type: 'SC_KEY_SEG', keyTechId: techId, keyCveNodeId: src } });
+            cy.add({ group: 'edges', data: { id: `${prefix}_e2`, source: leftId, target: pivotId, type: 'SC_KEY_SWITCH', keyTechId: techId, keyCveNodeId: src } });
+            cy.add({ group: 'edges', data: { id: `${prefix}_e3`, source: rightId, target: tgt, type: 'SC_KEY_ARROW', keyTechId: techId, keyCveNodeId: src } });
+          } catch {}
+          try { e.data('keyInited', true); } catch {}
+        } catch {}
+      });
+      syncAllKeyPositions();
+    } catch {}
   }
 
   function rerenderAccordingToProfile() {
@@ -1178,9 +1447,17 @@
       style: scenarioStyleForProfile(profile),
       layout: { name: 'preset', fit: true, padding: 20 }
     });
+    if (profile === 'mono') {
+      linearClosedKeyByTechnique = new Map();
+      initScenarioKeysLinear();
+      bindKeyFollow();
+      bindKeyClick('linear');
+    }
     cy.on('tap', 'node', (evt) => {
-      cy.elements().removeClass('sel neigh');
       const ele = evt.target;
+      const g = ele.data('group');
+      if (g === 'KeyContact' || g === 'KeyPivot') return;
+      cy.elements().removeClass('sel neigh');
       ele.addClass('sel');
       ele.closedNeighborhood().difference(ele).addClass('neigh');
       renderInspector(ele);
@@ -1219,9 +1496,16 @@
     try { cy.nodes("[group='CVE']").style('display', flag ? 'element' : 'none'); } catch {}
     try { cy.edges("[type='SC_TECH_TO_CVE']").style('display', flag ? 'element' : 'none'); } catch {}
     try { cy.edges("[type='SC_STEP']").style('display', flag ? 'element' : 'none'); } catch {}
-    // Прямые стрелки между техниками:
-    //  - в Ч/Б профиле: скрываем их при показе CVE, показываем когда CVE скрыты
-    //  - в цветном профиле: всегда показываем
+    try {
+      if (getProfile() === 'mono') {
+        cy.nodes("[group='KeyContact']").style('display', flag ? 'element' : 'none');
+        cy.nodes("[group='KeyPivot']").style('display', flag ? 'element' : 'none');
+        cy.edges("[type='SC_KEY_SEG']").style('display', flag ? 'element' : 'none');
+        cy.edges("[type='SC_KEY_SWITCH']").style('display', flag ? 'element' : 'none');
+        cy.edges("[type='SC_KEY_ARROW']").style('display', flag ? 'element' : 'none');
+      }
+    } catch {}
+    // Прямые стрелки между техниками
     try {
       const profile = getProfile();
       if (profile === 'mono') {
@@ -1238,8 +1522,8 @@
     try {
       // Сначала скрываем все CVE и связи
       setLinearCVEsVisible(false);
-      // Прямые стрелки между техниками оставляем видимыми всегда в цветном профиле
-      // и скрываем только стрелку выбранной техники в Ч/Б профиле
+      // Прямые стрелки между техниками в цветном профиле оставляем видимыми всегда
+      // В чб профиле скрываем стрелку только для выбранной техники
       const profile = getProfile();
       let nextTid = null;
       try {
@@ -1252,6 +1536,38 @@
       // Покажем связи техника->CVE для данной техники
       const tEdges = cy.edges(`[type = 'SC_TECH_TO_CVE'][source = '${tid}']`);
       tEdges.style('display', 'element');
+      if (profile === 'mono') {
+        const contacts = cy.nodes("[group='KeyContact']");
+        const pivots = cy.nodes("[group='KeyPivot']");
+        const keyEdges = cy.edges().filter(e => {
+          const tp = String(e.data('type') || '');
+          return tp === 'SC_KEY_SEG' || tp === 'SC_KEY_SWITCH' || tp === 'SC_KEY_ARROW';
+        });
+        tEdges.forEach(e => {
+          try {
+            const cid = String(e.data('target'));
+            const cvNode = cy.getElementById(cid);
+            if (cvNode && cvNode.length) cvNode.style('display', 'element');
+            contacts.forEach(n => {
+              const kt = String(n.data('keyTechId') || '');
+              const kc = String(n.data('keyCveNodeId') || '');
+              if (kt === String(tid) && kc === cid) n.style('display', 'element');
+            });
+            pivots.forEach(n => {
+              const kt = String(n.data('keyTechId') || '');
+              const kc = String(n.data('keyCveNodeId') || '');
+              if (kt === String(tid) && kc === cid) n.style('display', 'element');
+            });
+            keyEdges.forEach(ed => {
+              const kt = String(ed.data('keyTechId') || '');
+              const kc = String(ed.data('keyCveNodeId') || '');
+              if (kt === String(tid) && kc === cid) ed.style('display', 'element');
+            });
+          } catch {}
+        });
+        syncAllKeyPositions();
+        return;
+      }
       // Для каждой связи делаем видимым целевой CVE и его переход к следующей технике
       tEdges.forEach(e => {
         try {
@@ -1406,13 +1722,12 @@
     return elements;
   }
 
-  // Монохромный сценарий, CVE вертикально справа от соответствующей техники
-  function buildScenarioElementsMono(sc) {
-    const GAP_X = 120;
-    const TECH_Y = 100;
-    // CVE располагаем по центру отрезка между текущей и следующей техникой
-    const CVE_OFFSET_X = GAP_X / 2;
-    const CVE_GAP_Y = 46;
+	  // ч/б сценарий, CVE вертикально справа от соответствующей техники
+	  function buildScenarioElementsMono(sc) {
+	    const GAP_X = 160;
+	    const TECH_Y = 100;
+	    const CVE_OFFSET_X = Math.round(GAP_X * 0.35);
+	    const CVE_GAP_Y = 54;
     const elements = [];
     const steps = sc.steps || [];
 
@@ -1450,14 +1765,14 @@
         const y = pos.y + (j - (list.length-1)/2) * CVE_GAP_Y;
         const id = `cve_${tid}_${cid}`;
         const cvss = cvssSumFromRaw(cv);
-        elements.push({ data:{ id, label:'CVE', group:'CVE', raw: cv, cvss: cvss }, position:{ x, y } });
+        elements.push({ data:{ id, label:'CVE', group:'CVE', raw: cv, cvss: cvss, techId: tid }, position:{ x, y } });
         const eid = `tc_${tid}_${cid}`; const epss = Number((cv.props && cv.props.epss) || 0);
         elements.push({ data:{ id:eid, source: tid, target: id, type:'SC_TECH_TO_CVE', epss: epss } });
         // связь CVE -> следующая техника (если есть)
         if (i < steps.length - 1) {
           const nextTid = String(steps[i+1].technique.id);
           const e2 = `cv_${tid}_${cid}_to_${nextTid}`;
-          elements.push({ data:{ id: e2, source: id, target: nextTid, type: 'SC_STEP' } });
+          elements.push({ data:{ id: e2, source: id, target: nextTid, type: 'SC_STEP', stepTechId: tid } });
         }
       }
     }
@@ -1692,8 +2007,15 @@
       style: scenarioStyleForProfile(getProfile()),
       layout: { name: 'preset', fit: true, padding: 20 }
     });
+    if (getProfile() === 'mono') {
+      primaryClosedKeyByTechnique = new Map();
+      bindKeyFollow();
+      bindKeyClick('primary');
+    }
     cy.on('tap', 'node', (evt) => {
       const ele = evt.target;
+      const g = ele.data('group');
+      if (g === 'KeyContact' || g === 'KeyPivot') return;
       const grp = ele.data('group');
       if (showAllCves && showAllCves.checked) {
         showPrimaryAllCVEs();
@@ -1725,8 +2047,9 @@
     const th5 = loadTheme(); if (th5) applyTheme(th5);
   }
 
-  function buildPrimaryElements(mega) {
-    const COL_GAP=160, ROW_GAP=70, TOP_Y=80, CENTER_Y=150; const elements=[]; const cols=(mega||[]).slice().sort((a,b)=>(a.tactic_order||0)-(b.tactic_order||0));
+	  function buildPrimaryElements(mega) {
+	    const COL_GAP = (getProfile() === 'mono') ? 210 : 160;
+    const ROW_GAP=70, TOP_Y=80, CENTER_Y=150; const elements=[]; const cols=(mega||[]).slice().sort((a,b)=>(a.tactic_order||0)-(b.tactic_order||0));
     const groupIds=[];
     for (let ci=0; ci<cols.length; ci++) {
       const col = cols[ci]; const gid = `tg_${ci}`; groupIds.push(gid);
@@ -1748,9 +2071,10 @@
     const th = loadTheme(); if (th) applyTheme(th);
   }
 
-  function addCVEsForGroup(groupEle, dontClear) {
-    const kids = groupEle.children();
-    const CVE_GAP_Y=46; const OFFSET_X=70;
+	  function addCVEsForGroup(groupEle, dontClear) {
+	    const kids = groupEle.children();
+	    const CVE_GAP_Y=54;
+	    const OFFSET_X = (getProfile() === 'mono') ? 80 : 70;
     const usedY = [];
     const placeY = (y) => { const MIN=44, STEP=6; let dy=0, dir=1, it=0, yy=y; while (usedY.some(v=>Math.abs(v-yy)<MIN) && it<200) { yy = y + dir*dy; dir=-dir; dy+=STEP; it++; } usedY.push(yy); return yy; };
     kids.forEach(k => {
@@ -1775,7 +2099,7 @@
         if (nextG) {
           const e2 = `pg_cv_${tid}_${cid}_to_${nextG.id()}`;
           if (cy.getElementById(e2).length === 0) {
-            try { cy.add({ group:'edges', data:{ id: e2, source: nodeId, target: nextG.id(), type: 'SC_GROUP' } }); } catch {}
+            try { cy.add({ group:'edges', data:{ id: e2, source: nodeId, target: nextG.id(), type: 'SC_GROUP', stepTechId: tid } }); } catch {}
           }
         }
       }
@@ -1784,13 +2108,14 @@
     try { hideGroupLinkFromGroup(groupEle.id()); } catch {}
     // Применяем тему к только что добавленным элементам
     const th = loadTheme(); if (th) applyTheme(th);
+    if (getProfile() === 'mono') initPrimaryKeysForEdges();
   }
 
-  function addCVEsForTechnique(techEle) {
+	  function addCVEsForTechnique(techEle) {
     const tid = String(techEle.id());
-    const st = primaryStepByTechId.get(tid); if (!st) return;
-    const list = Array.isArray(st.cves) ? st.cves : [];
-    const base = techEle.position(); const x = base.x + 70; const CVE_GAP_Y = 46;
+	    const st = primaryStepByTechId.get(tid); if (!st) return;
+	    const list = Array.isArray(st.cves) ? st.cves : [];
+	    const base = techEle.position(); const x = base.x + ((getProfile() === 'mono') ? 80 : 70); const CVE_GAP_Y = 54;
     const usedY2 = [];
     const placeY2 = (y) => { const MIN=44, STEP=6; let dy=0, dir=1, it=0, yy=y; while (usedY2.some(v=>Math.abs(v-yy)<MIN) && it<200) { yy = y + dir*dy; dir=-dir; dy+=STEP; it++; } usedY2.push(yy); return yy; };
     for (let i = 0; i < list.length; i++) {
@@ -1810,13 +2135,14 @@
       if (nextG) {
         const e2 = `pg_cv_${tid}_${cid}_to_${nextG.id()}`;
         if (cy.getElementById(e2).length === 0) {
-          try { cy.add({ group:'edges', data:{ id: e2, source: nodeId, target: nextG.id(), type: 'SC_GROUP' } }); } catch {}
+          try { cy.add({ group:'edges', data:{ id: e2, source: nodeId, target: nextG.id(), type: 'SC_GROUP', stepTechId: tid } }); } catch {}
         }
       }
     }
     // Если показаны CVE — скрываем прямые связи только для этой тактики
     try { hideGroupLinkFromGroup(techEle.parent().id()); } catch {}
     const th = loadTheme(); if (th) applyTheme(th);
+    if (getProfile() === 'mono') initPrimaryKeysForEdges();
   }
 
   function setGroupLinksVisible(flag) { try { cy.elements("edge[type='SC_GROUP_LINK']").style('display', flag ? 'element' : 'none'); } catch {} }
@@ -1826,7 +2152,13 @@
   function clearPrimaryCVEs(showLinks=false) {
     try { cy.elements("edge[type='SC_TECH_TO_CVE']").remove(); } catch {}
     try { cy.nodes("[group='CVE']").remove(); } catch {}
+    try { cy.nodes("[group='KeyContact']").remove(); } catch {}
+    try { cy.nodes("[group='KeyPivot']").remove(); } catch {}
+    try { cy.edges("[type='SC_KEY_SEG']").remove(); } catch {}
+    try { cy.edges("[type='SC_KEY_SWITCH']").remove(); } catch {}
+    try { cy.edges("[type='SC_KEY_ARROW']").remove(); } catch {}
     if (showLinks) setGroupLinksVisible(true);
+    if (getProfile() === 'mono') primaryClosedKeyByTechnique = new Map();
   }
 
   function findNextTacticGroup(groupEle) {
@@ -1845,6 +2177,12 @@
     // Полностью перестраиваем CVE-слой
     cy.elements("edge[type='SC_TECH_TO_CVE']").remove();
     cy.elements("node[group='CVE']").remove();
+    try { cy.nodes("[group='KeyContact']").remove(); } catch {}
+    try { cy.nodes("[group='KeyPivot']").remove(); } catch {}
+    try { cy.edges("[type='SC_KEY_SEG']").remove(); } catch {}
+    try { cy.edges("[type='SC_KEY_SWITCH']").remove(); } catch {}
+    try { cy.edges("[type='SC_KEY_ARROW']").remove(); } catch {}
+    if (getProfile() === 'mono') primaryClosedKeyByTechnique = new Map();
     const groups = cy.nodes("[group = 'TacticGroup']");
     groups.forEach(g => addCVEsForGroup(g, true));
     setGroupLinksVisible(false);
