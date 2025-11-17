@@ -32,7 +32,7 @@ header, footer { padding: 12px 20px; background: var(--header-bg); border-bottom
 header h1 { margin: 0; font-size: 18px; font-weight: 600; }
 footer { border-top: 1px solid var(--line); border-bottom: none; color: var(--muted); font-size: 12px; }
 
-main { padding: 20px; display: grid; gap: 20px; grid-template-columns: 450px 1fr; }
+main { padding: 20px; display: grid; gap: 20px; grid-template-columns: 500px 1fr; }
 
 .controls, .output { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
 .controls h2, .output h2 { margin: 0 0 12px 0; font-size: 16px; }
@@ -413,3 +413,73 @@ button.selected { background: var(--ok); }
 .theme-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px; margin: 8px 0; }
 .theme-row label { color: var(--text); font-size: 14px; }
 .theme-row input[type="color"] { width: 48px; height: 28px; padding: 0; border: 1px solid var(--line-soft); border-radius: 6px; background: var(--surface-soft); }
+
+/* Переключатели (toggle) для чекбоксов в интерфейсе */
+body.page-data label:has(> input[type="checkbox"]),
+body.page-graph label:has(> input[type="checkbox"]) {
+  position: relative;
+  padding-left: 44px;
+  min-height: 24px;
+}
+
+body.page-data label:has(> input[type="checkbox"]) > input[type="checkbox"],
+body.page-graph label:has(> input[type="checkbox"]) > input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  margin: 0;
+  pointer-events: none;
+}
+
+body.page-data label:has(> input[type="checkbox"])::before,
+body.page-graph label:has(> input[type="checkbox"])::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  border: 1px solid var(--line-soft);
+  box-sizing: border-box;
+  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+body.page-data label:has(> input[type="checkbox"])::after,
+body.page-graph label:has(> input[type="checkbox"])::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+  transition: transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+
+body.page-data label:has(> input[type="checkbox"]:checked)::before,
+body.page-graph label:has(> input[type="checkbox"]:checked)::before {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+body.page-data label:has(> input[type="checkbox"]:checked)::after,
+body.page-graph label:has(> input[type="checkbox"]:checked)::after {
+  transform: translate(16px, -50%);
+}
+
+body.page-data label:has(> input[type="checkbox"]:focus-visible)::before,
+body.page-graph label:has(> input[type="checkbox"]:focus-visible)::before {
+  box-shadow: 0 0 0 3px rgba(79, 140, 255, 0.4);
+}
+
+body.page-data label:has(> input[type="checkbox"]:disabled),
+body.page-graph label:has(> input[type="checkbox"]:disabled) {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
