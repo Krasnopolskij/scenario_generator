@@ -74,6 +74,16 @@ body.light-theme .ctrl-group {
     0 12px 24px rgba(16,24,40,0.04);
 }
 
+body.light-theme .controls.has-groups {
+  background: transparent;
+  box-shadow: none;
+  border-color: transparent;
+}
+
+body.light-theme .controls.has-groups .ctrl-group {
+  box-shadow: none;
+}
+
 /* Стили для fieldset и подписей */
 body.light-theme fieldset { border-color: #e0e5f2; }
 body.light-theme legend { color: #6c7385; }
