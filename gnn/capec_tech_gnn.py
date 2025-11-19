@@ -44,7 +44,7 @@ class GNNConfig:
     min_score: float = 0.5
 
     # Режим работы GNN: mlp (через MLP-предиктор) или dot (через cosine-сходство)
-    mode: str = "mlp"
+    mode: str = "dot"
 
     # Прочее
     device: str = "cpu"
@@ -87,9 +87,9 @@ class GNNConfig:
         top_k = _int("GNN_TOP_K", 2)
         min_score = _float("GNN_MIN_SCORE", 0.5)
         seed = _int("GNN_SEED", 42)
-        mode = (os.getenv("GNN_MODE", "mlp") or "mlp").strip().lower()
+        mode = (os.getenv("GNN_MODE", "dot") or "dot").strip().lower()
         if mode not in {"mlp", "dot"}:
-            mode = "mlp"
+            mode = "dot"
 
         default_device = "cuda" if torch.cuda.is_available() else "cpu"
         device = os.getenv("GNN_DEVICE", default_device)
@@ -773,7 +773,7 @@ def write_predicted_edges_to_neo4j(
             f"[DRY-RUN] Предсказанные рёбра не будут записаны. "
             f"Количество кандидатов после группировки: {len(edges_payload)}"
         )
-        examples = edges_payload[:10]
+        examples = edges_payload[:30]
         print("Примеры кандидатов:")
         for example in examples:
             print(
@@ -836,7 +836,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         type=str,
         choices=["mlp", "dot"],
         default=None,
-        help="Режим скоринга: mlp (через MLP-предиктор) или dot (через cosine-сходство). По умолчанию mlp.",
+        help="Режим скоринга: mlp (через MLP-предиктор) или dot (через cosine-сходство). По умолчанию dot.",
     )
     parser.add_argument(
         "--dry-run",

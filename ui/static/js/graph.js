@@ -196,6 +196,19 @@
       if (!isFinite(s)) s = 0; if (s < 0) s = 0; if (s > 10) s = 10; return s;
     } catch { return 0; }
   }
+  const KEV_STRIPE_IMG_DARK = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2IiBoZWlnaHQ9IjYiIHZpZXdCb3g9IjAgMCA2IDYiPgogIDxkZWZzPgogICAgPHBhdHRlcm4gaWQ9InAiIHBhdHRlcm5Vbml0cz0idXNlclNwYWNlT25Vc2UiIHdpZHRoPSI2IiBoZWlnaHQ9IjYiPgogICAgICA8cGF0aCBkPSJNMCA2IEw2IDAiIHN0cm9rZT0iIzAwMDAwMCIgc3Ryb2tlLXdpZHRoPSIxLjIiIG9wYWNpdHk9IjAuNTUiIGZpbGw9Im5vbmUiIC8+CiAgICA8L3BhdHRlcm4+CiAgPC9kZWZzPgogIDxyZWN0IHdpZHRoPSI2IiBoZWlnaHQ9IjYiIGZpbGw9InVybCgjcCkiIC8+Cjwvc3ZnPg==';
+  const KEV_STRIPE_IMG_LIGHT = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2IiBoZWlnaHQ9IjYiIHZpZXdCb3g9IjAgMCA2IDYiPgogIDxkZWZzPgogICAgPHBhdHRlcm4gaWQ9InAiIHBhdHRlcm5Vbml0cz0idXNlclNwYWNlT25Vc2UiIHdpZHRoPSI2IiBoZWlnaHQ9IjYiPgogICAgICA8cGF0aCBkPSJNMCA2IEw2IDAiIHN0cm9rZT0iI2ZmZmZmZiIgc3Ryb2tlLXdpZHRoPSIxLjIiIG9wYWNpdHk9IjAuNTUiIGZpbGw9Im5vbmUiIC8+CiAgICA8L3BhdHRlcm4+CiAgPC9kZWZzPgogIDxyZWN0IHdpZHRoPSI2IiBoZWlnaHQ9IjYiIGZpbGw9InVybCgjcCkiIC8+Cjwvc3ZnPg==';
+  function kevStripeImageForEle(ele) {
+    try {
+      if (!ele || ele.data('group') !== 'CVE') return 'none';
+      const raw = ele.data('raw') || {};
+      const p = (raw && (raw.props || raw)) || {};
+      if (!p.in_cisa_kev) return 'none';
+      const s = cvssSumFromRaw(raw);
+      const lbl = (s > 6.7) ? '#ffffff' : '#111';
+      return (lbl === '#ffffff') ? KEV_STRIPE_IMG_LIGHT : KEV_STRIPE_IMG_DARK;
+    } catch { return 'none'; }
+  }
   function grayFromScore0to10(v) {
     const s = Math.max(0, Math.min(10, Number(v) || 0));
     const l = 92 - (s / 10) * 70; // 92% -> 22%
@@ -228,6 +241,9 @@
           }, 'font-size': 12,
           'text-valign': 'center', 'text-halign': 'center', 'text-wrap': 'none',
           'shape': ele => shapeMono(ele.data('group')),
+          'background-image': ele => kevStripeImageForEle(ele),
+          'background-fit': 'none',
+          'background-repeat': 'repeat',
           'background-color': ele => {
             const g = ele.data('group');
             if (g === 'Technique') return '#ffffff';
@@ -272,6 +288,9 @@
             return lblColor;
           },'font-size': 12,'text-valign':'center','text-halign':'center','text-wrap':'none',
           'shape': ele => shapeMono(ele.data('group')),
+          'background-image': ele => kevStripeImageForEle(ele),
+          'background-fit': 'none',
+          'background-repeat': 'repeat',
           'background-color': ele => {
             const g = ele.data('group');
             if (g === 'Technique') return '#ffffff';
