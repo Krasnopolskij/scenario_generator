@@ -7,7 +7,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # Установка зависимостей основного приложения
-# Файл зависимостей лежит в корне контекста сборки
+# Файлы зависимостей находятся в корне проекта
 COPY requirements-app.txt ./requirements-app.txt
 RUN pip install --no-cache-dir -r ./requirements-app.txt
 
