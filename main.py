@@ -473,7 +473,7 @@ async def run_gnn(request: Request):
         sentence_model=sentence_model,
         device=device,
         mode=mode,
-        dry_run=dry_run
+        dry_run=dry_run,
     )
 
     def generator():
@@ -486,6 +486,33 @@ async def run_gnn(request: Request):
         media_type="text/plain; charset=utf-8",
         headers={"X-Run-Id": run_id},
     )
+
+
+@app.post("/gnn/clear")
+def clear_gnn_predictions():
+    try:
+        g = get_graph()
+    except Exception as e:
+        return JSONResponse(
+            {
+                "status": "error",
+                "error": f"Не удалось подключиться к Neo4j: {e}",
+            },
+            status_code=500,
+        )
+
+    cypher = "MATCH ()-[r:CAPEC_TO_TECHNIQUE_PRED]->() DELETE r"
+    try:
+        g.run(cypher)
+    except Exception as e:
+        return JSONResponse(
+            {
+                "status": "error",
+                "error": f"Ошибка при удалении связей CAPEC_TO_TECHNIQUE_PRED: {e}",
+            },
+            status_code=500,
+        )
+    return JSONResponse({"status": "ok"})
 
 
 @app.post("/stop")

@@ -2,12 +2,16 @@
   const form = document.getElementById('run-form');
   const runBtn = document.getElementById('run-btn');
   const stopBtn = document.getElementById('stop-btn');
+  const gnnRunBtn = document.getElementById('gnn-run-btn');
+  const gnnStopBtn = document.getElementById('gnn-stop-btn');
+  const gnnClearBtn = document.getElementById('gnn-clear-btn');
   const output = document.getElementById('output');
   const clearBtn = document.getElementById('clear-btn');
   const LS_KEY = 'sg:data:filters';
 
   let abortController = null;
   let currentRunId = null;
+  let currentJobKind = null; // 'load' | 'gnn' | null
   // Запоминаем ключ последней зафиксированной строки прогресса, чтобы не дублировать финал
   let lastFinalKey = null;
   let inBar = false;
@@ -110,10 +114,11 @@
     }
   }
 
-  async function run() {
+  async function runLoad() {
     const payload = gatherValues();
     // Генерируем run_id на клиенте, сервер может вернуть свой через заголовок
     currentRunId = `${Date.now()}-${Math.random().toString(16).slice(2,8)}`;
+    currentJobKind = 'load';
     payload.run_id = currentRunId;
     // Оценим ширину в символах по ширине окна/блока вывода
     try {
@@ -125,6 +130,9 @@
     output.textContent = '';
     runBtn.disabled = true;
     stopBtn.disabled = false;
+    if (gnnRunBtn) gnnRunBtn.disabled = true;
+    if (gnnStopBtn) gnnStopBtn.disabled = true;
+    if (gnnClearBtn) gnnClearBtn.disabled = true;
     abortController = new AbortController();
 
     try {
@@ -164,14 +172,19 @@
     } finally {
       runBtn.disabled = false;
       stopBtn.disabled = true;
+      if (gnnRunBtn) gnnRunBtn.disabled = false;
+      if (gnnStopBtn) gnnStopBtn.disabled = true;
+      if (gnnClearBtn) gnnClearBtn.disabled = false;
       abortController = null;
       currentRunId = null;
+      currentJobKind = null;
     }
   }
 
   form.addEventListener('submit', (e) => {
     e.preventDefault();
-    run();
+    if (currentRunId) return;
+    runLoad();
   });
 
   // Взаимоисключающие чекбоксы ONLY/SKIP
@@ -226,6 +239,9 @@
       abortController = null;
       return;
     }
+    if (currentJobKind !== 'load') {
+      return;
+    }
     try {
       const resp = await fetch('/stop', {
         method: 'POST',
@@ -240,8 +256,12 @@
       if (abortController) abortController.abort();
       runBtn.disabled = false;
       stopBtn.disabled = true;
+      if (gnnRunBtn) gnnRunBtn.disabled = false;
+      if (gnnStopBtn) gnnStopBtn.disabled = true;
+      if (gnnClearBtn) gnnClearBtn.disabled = false;
       abortController = null;
       currentRunId = null;
+      currentJobKind = null;
     }
   });
 
@@ -254,6 +274,147 @@
     try { localStorage.removeItem(LS_KEY); } catch (e) { console.warn('ls clear filters', e); }
   });
 
+  async function runGnn() {
+    if (currentRunId) return;
+
+    const payload = {};
+    currentRunId = `${Date.now()}-${Math.random().toString(16).slice(2,8)}`;
+    currentJobKind = 'gnn';
+    payload.run_id = currentRunId;
+    try {
+      const rect = output.getBoundingClientRect();
+      const px = rect.width || window.innerWidth || 800;
+      const cols = Math.max(60, Math.floor(px / 8));
+      payload.columns = cols;
+    } catch {}
+
+    output.textContent = '';
+    if (gnnRunBtn) gnnRunBtn.disabled = true;
+    if (gnnStopBtn) gnnStopBtn.disabled = false;
+    if (gnnClearBtn) gnnClearBtn.disabled = true;
+    runBtn.disabled = true;
+    stopBtn.disabled = true;
+    abortController = new AbortController();
+
+    try {
+      const resp = await fetch('/run/gnn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: abortController.signal,
+      });
+
+      if (!resp.ok) {
+        let msg = `${resp.status} ${resp.statusText}`;
+        try {
+          const data = await resp.json();
+          if (data && data.error) msg = `${msg} — ${data.error}`;
+        } catch {}
+        append(`Ошибка запуска GNN: ${msg}\n`);
+        return;
+      }
+      if (!resp.body) {
+        append(`Ошибка запуска GNN: пустой ответ сервера\n`);
+        return;
+      }
+
+      const hdrId = resp.headers.get('x-run-id');
+      if (hdrId) currentRunId = hdrId;
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        append(decoder.decode(value, { stream: true }));
+      }
+    } catch (err) {
+      append(`\n[client error gnn] ${err}\n`);
+    } finally {
+      if (gnnRunBtn) gnnRunBtn.disabled = false;
+      if (gnnStopBtn) gnnStopBtn.disabled = true;
+      if (gnnClearBtn) gnnClearBtn.disabled = false;
+      runBtn.disabled = false;
+      stopBtn.disabled = true;
+      abortController = null;
+      currentRunId = null;
+      currentJobKind = null;
+    }
+  }
+
+  if (gnnRunBtn) {
+    gnnRunBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (currentRunId) return;
+      runGnn();
+    });
+  }
+
+  if (gnnStopBtn) {
+    gnnStopBtn.addEventListener('click', async () => {
+      if (!currentRunId || currentJobKind !== 'gnn') {
+        return;
+      }
+      try {
+        const resp = await fetch('/stop', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ run_id: currentRunId }),
+        });
+        const data = await resp.json().catch(() => ({}));
+        append(`\n[server stop gnn] ${data.status || resp.status}\n`);
+      } catch (e) {
+        append(`\n[server stop gnn error] ${e}\n`);
+      } finally {
+        if (abortController) abortController.abort();
+        if (gnnRunBtn) gnnRunBtn.disabled = false;
+        if (gnnStopBtn) gnnStopBtn.disabled = true;
+        if (gnnClearBtn) gnnClearBtn.disabled = false;
+        runBtn.disabled = false;
+        stopBtn.disabled = true;
+        abortController = null;
+        currentRunId = null;
+        currentJobKind = null;
+      }
+    });
+  }
+
+  async function performGnnClear() {
+    if (currentRunId) {
+      const msg = 'Ошибка очистки: найден запущенный процесс (загрузчик или GNN).';
+      openGnnClearResultModal(msg);
+      return;
+    }
+    try {
+      const resp = await fetch('/gnn/clear', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (resp.ok && (data.status === 'ok' || !data.status)) {
+        const msg = 'Добавленные GNN связи успешно удалены из базы.';
+        openGnnClearResultModal(msg);
+      } else {
+        const msg = `Ошибка сервера (${resp.status}) при очистке связей, добавленных GNN: ${data.error || 'Неизвестная ошибка'}`;
+        openGnnClearResultModal(msg);
+      }
+    } catch (e) {
+      const msg = `Ошибка сети при очистке связей, добавленных GNN: ${e}`;
+      openGnnClearResultModal(msg);
+    }
+  }
+
+  if (gnnClearBtn) {
+    gnnClearBtn.addEventListener('click', () => {
+      if (currentRunId) {
+        const msg = 'Ошибка очистки: найден запущенный процесс (загрузчик или GNN).';
+        openGnnClearResultModal(msg);
+        return;
+      }
+      openGnnClearConfirmModal();
+    });
+  }
+
   // защита от ухода со страницы во время загрузки
   const leaveBackdrop = document.getElementById('leave-confirm-backdrop');
   const leaveCancel = document.getElementById('leave-cancel');
@@ -261,8 +422,59 @@
   let leavePendingHref = null;
   let allowLeave = false; // когда true, beforeunload не блокирует
 
-  // наличие запущенного процесса определяется по currentRunId
+  // наличие запущенного процесса (загрузчик или GNN) определяется по currentRunId
   const isBusy = () => !!currentRunId;
+
+  // Модалки управления очисткой GNN
+  const gnnClearConfirmBackdrop = document.getElementById('gnn-clear-confirm-backdrop');
+  const gnnClearConfirmBtn = document.getElementById('gnn-clear-confirm');
+  const gnnClearCancelBtn = document.getElementById('gnn-clear-cancel');
+  const gnnClearResultBackdrop = document.getElementById('gnn-clear-result-backdrop');
+  const gnnClearResultMessage = document.getElementById('gnn-clear-result-message');
+  const gnnClearResultOk = document.getElementById('gnn-clear-result-ok');
+
+  function openGnnClearConfirmModal() {
+    if (!gnnClearConfirmBackdrop) return;
+    gnnClearConfirmBackdrop.hidden = false;
+    gnnClearConfirmBackdrop.classList.add('open');
+  }
+  function closeGnnClearConfirmModal() {
+    if (!gnnClearConfirmBackdrop) return;
+    gnnClearConfirmBackdrop.classList.remove('open');
+    gnnClearConfirmBackdrop.hidden = true;
+  }
+  function openGnnClearResultModal(message) {
+    if (!gnnClearResultBackdrop) return;
+    if (gnnClearResultMessage) gnnClearResultMessage.textContent = message;
+    gnnClearResultBackdrop.hidden = false;
+    gnnClearResultBackdrop.classList.add('open');
+  }
+  function closeGnnClearResultModal() {
+    if (!gnnClearResultBackdrop) return;
+    gnnClearResultBackdrop.classList.remove('open');
+    gnnClearResultBackdrop.hidden = true;
+  }
+
+  if (gnnClearCancelBtn) gnnClearCancelBtn.addEventListener('click', () => closeGnnClearConfirmModal());
+  if (gnnClearConfirmBackdrop) {
+    gnnClearConfirmBackdrop.addEventListener('click', (e) => {
+      if (e.target === gnnClearConfirmBackdrop) closeGnnClearConfirmModal();
+    });
+  }
+  if (gnnClearResultBackdrop) {
+    gnnClearResultBackdrop.addEventListener('click', (e) => {
+      if (e.target === gnnClearResultBackdrop) closeGnnClearResultModal();
+    });
+  }
+  if (gnnClearConfirmBtn) {
+    gnnClearConfirmBtn.addEventListener('click', async () => {
+      closeGnnClearConfirmModal();
+      await performGnnClear();
+    });
+  }
+  if (gnnClearResultOk) {
+    gnnClearResultOk.addEventListener('click', () => closeGnnClearResultModal());
+  }
 
   function openLeaveModal(href=null) {
     leavePendingHref = href;

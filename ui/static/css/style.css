@@ -102,6 +102,7 @@ option:disabled { color: #6c7390; }
 button { cursor: pointer; border: 0; border-radius: 8px; padding: 8px 14px; font-weight: 600; color: white; background: var(--accent); }
 button[disabled] { opacity: 0.65; cursor: not-allowed; }
 #stop-btn { background: var(--error); }
+#gnn-stop-btn { background: var(--error); }
 .btn-link { color: var(--text); text-decoration: none; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line-soft); }
 /* Унифицированная анимация наведения для всех кнопок */
 button,
@@ -358,8 +359,8 @@ button.selected { background: var(--ok); }
 .page-graph .form-inline input[type="text"] { width: 100%; }
 .page-graph #draw-btn { width: fit-content; }
 
-/* Разделение левой панели на два визуальных блока */
-.page-graph .controls.has-groups {
+/* Разделение левой панели на два визуальных блока (страницы графа и сбора данных) */
+.controls.has-groups {
   background: transparent;
   border: 0;
   padding: 0;
@@ -367,13 +368,13 @@ button.selected { background: var(--ok); }
   grid-template-rows: auto 1fr; /* верхняя карточка по контенту, нижняя — заполняет остаток */
   row-gap: 16px;
 }
-.page-graph .controls.has-groups .ctrl-group {
+.controls.has-groups .ctrl-group {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 16px;
 }
-.page-graph .controls.has-groups .ctrl-group + .ctrl-group { margin-top: 0; }
+.controls.has-groups .ctrl-group + .ctrl-group { margin-top: 0; }
 
 /* Сценарии на странице графа */
 .scenarios-ctrl { margin-top: 12px; }

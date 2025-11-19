@@ -1046,7 +1046,7 @@
       if (d && typeof d === 'object') {
         if (typeof d.cpe === 'string' && d.cpe && !new URLSearchParams(window.location.search).get('cpe')) cpeInput.value = d.cpe;
         if (typeof d.mode === 'string') {
-          const acceptable = new Set(['full', 'full_relaxed', 'simple']);
+          const acceptable = new Set(['full', 'full_relaxed', 'full_gnn', 'simple']);
           modeSel.value = acceptable.has(d.mode) ? d.mode : 'full';
         }
       }
@@ -1112,7 +1112,11 @@
       if (!raw) return;
       const d = JSON.parse(raw);
       if (d && typeof d === 'object') {
-        if (scModeSel && typeof d.mode === 'string') scModeSel.value = d.mode === 'relaxed' ? 'relaxed' : 'strict';
+        if (scModeSel && typeof d.mode === 'string') {
+          const mode = String(d.mode);
+          if (mode === 'relaxed' || mode === 'gnn' || mode === 'strict') scModeSel.value = mode;
+          else scModeSel.value = 'strict';
+        }
         if (scMaxPerTacticInput) {
           let v = parseInt(d.max_per_tactic);
           if (!Number.isFinite(v)) v = 2;
