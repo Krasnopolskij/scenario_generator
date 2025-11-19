@@ -25,8 +25,8 @@
 - Контейнер приложения подключается к Neo4j по адресу `bolt://neo4j:7687` (имя сервиса).
 - Загрузчики можно запустить и вручную внутри контейнера, пример:
   
-  `docker exec -it scenario_app python -u app.py --only techniques,capec,cwe,cve --cve-from-year 2020`
-- Для сборки используется `requirements-app.txt` (зависимости без GNN-модуля).
+  `docker exec -it scenario_app python -u data_collection/loader.py --only techniques,capec,cwe,cve --cve-from-year 2020`
+- Для сборки используются `requirements-app.txt` и `requirements-gnn.txt` (зависимости основного приложения и GNN-модуля).
 
 ## Команды Compose
 

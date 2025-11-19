@@ -128,7 +128,7 @@
     abortController = new AbortController();
 
     try {
-      const resp = await fetch('/run', {
+      const resp = await fetch('/run/load', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

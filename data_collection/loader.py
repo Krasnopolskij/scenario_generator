@@ -6,11 +6,10 @@ import datetime as dt
 from pathlib import Path
 from dotenv import load_dotenv
 
-ROOT = Path(__file__).parent.resolve()
+ROOT = Path(__file__).parent.parent.resolve()
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-# Отложенные импорты после настройки sys.path
 from data_collection import load_technique as techniques
 from data_collection import load_capec as capec
 from data_collection import load_cwe as cwe
@@ -30,8 +29,8 @@ def run_sequence(sequence):
         print(f"\n=== [{name.upper()}] Старт ===")
         t0 = time.time()
         step_fn()
-        dt = time.time() - t0
-        print(f"=== [{name.upper()}] Готово за {dt:.1f}с ===")
+        dt_spent = time.time() - t0
+        print(f"=== [{name.upper()}] Готово за {dt_spent:.1f}с ===")
     print(f"\nВсе шаги завершены за {time.time() - start:.1f}с")
 
 
@@ -77,19 +76,24 @@ def main():
         sys.exit(2)
 
     try:
-        # Ограничение стартового года импорта CVE через переменные окружения
         if getattr(args, "cve_from_year", None) is not None:
             raw = args.cve_from_year
             try:
                 year = int(raw)
-                current_year = dt.datetime.now(dt.UTC).year
+                current_year = dt.datetime.now(dt.timezone.utc).year
                 if 2002 <= year <= current_year:
                     os.environ["NVD_FROM_YEAR"] = str(year)
                 else:
-                    print(f"--cve-from-year проигнорирован (вне диапазона): {raw}. Импорт по всем годам.")
+                    print(
+                        f"--cve-from-year проигнорирован (вне диапазона): {raw}. "
+                        "Импорт по всем годам."
+                    )
             except (TypeError, ValueError):
                 if raw not in (None, ""):
-                    print(f"--cve-from-year проигнорирован (не число): {raw}. Импорт по всем годам.")
+                    print(
+                        f"--cve-from-year проигнорирован (не число): {raw}. "
+                        "Импорт по всем годам."
+                    )
 
         run_sequence(sequence)
     except Exception as e:
@@ -99,3 +103,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

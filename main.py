@@ -190,7 +190,7 @@ def api_graph_subgraph(cpe: str, mode: str = "full", limit: int = 1000):
         for r in getattr(p, "relationships", []):
             add_edge(r)
 
-    # Для режима full_gnn дополнительно подмешиваем предсказанные связи CAPEC_TO_TECHNIQUE_PRED
+    # Для режима full_gnn дополнительно добавляем предсказанные связи CAPEC_TO_TECHNIQUE_PRED
     if mode == "full_gnn":
         pred_cypher = (
             "MATCH (cpe:CPE {cpe23Uri: $cpe}) "
@@ -217,8 +217,8 @@ def api_graph_subgraph(cpe: str, mode: str = "full", limit: int = 1000):
     return {"nodes": list(nodes.values()), "edges": list(edges.values())}
 
 
-def build_command(only: Optional[List[str]], skip: Optional[List[str]], cve_from_year: Optional[int]) -> List[str]:
-    cmd = [sys.executable, "-u", str(ROOT / "app.py")]
+def build_load_command(only: Optional[List[str]], skip: Optional[List[str]], cve_from_year: Optional[int]) -> List[str]:
+    cmd = [sys.executable, "-u", str(ROOT / "data_collection" / "loader.py")]
     if only:
         safe = [x for x in only if x in ALLOWED_LOADERS]
         if safe:
@@ -233,6 +233,42 @@ def build_command(only: Optional[List[str]], skip: Optional[List[str]], cve_from
             cmd += ["--cve-from-year", str(year)]
         except Exception:
             pass
+    return cmd
+
+
+def build_gnn_command(
+    epochs: Optional[int] = None,
+    top_k: Optional[int] = None,
+    min_score: Optional[float] = None,
+    sentence_model: Optional[str] = None,
+    device: Optional[str] = None,
+    mode: Optional[str] = None,
+    dry_run: bool = False,
+) -> List[str]:
+    cmd: List[str] = [sys.executable, "-u", str(ROOT / "gnn" / "capec_tech_gnn.py")]
+    if epochs is not None:
+        try:
+            cmd += ["--epochs", str(int(epochs))]
+        except Exception:
+            pass
+    if top_k is not None:
+        try:
+            cmd += ["--top-k", str(int(top_k))]
+        except Exception:
+            pass
+    if min_score is not None:
+        try:
+            cmd += ["--min-score", str(float(min_score))]
+        except Exception:
+            pass
+    if isinstance(sentence_model, str) and sentence_model.strip():
+        cmd += ["--sentence-model", sentence_model.strip()]
+    if isinstance(device, str) and device.strip():
+        cmd += ["--device", device.strip()]
+    if isinstance(mode, str) and mode.strip():
+        cmd += ["--mode", mode.strip()]
+    if dry_run:
+        cmd.append("--dry-run")
     return cmd
 
 
@@ -341,7 +377,7 @@ def stream_process(cmd: List[str], run_id: str, tty_columns: Optional[int] = Non
             yield f"\n[exit code: {code}]\n"
 
 
-@app.post("/run")
+@app.post("/run/load")
 async def run_loader(request: Request):
     try:
         payload = await request.json()
@@ -371,7 +407,10 @@ async def run_loader(request: Request):
             status_code=400,
         )
 
-    cmd = build_command(only, skip, cve_from_year)
+    cmd = build_load_command(
+        only, 
+        skip, cve_from_year
+    )
 
     # Определяем/проверяем run_id
     if not isinstance(run_id, str) or not run_id:
@@ -391,6 +430,55 @@ async def run_loader(request: Request):
         if isinstance(check_hash, bool):
             extra_env["NVD_CHECK_HASH"] = "true" if check_hash else "false"
         for chunk in stream_process(cmd, run_id, tty_columns=tty_columns, tty_rows=tty_rows, extra_env=extra_env or None):
+            yield chunk
+
+    return StreamingResponse(
+        generator(),
+        media_type="text/plain; charset=utf-8",
+        headers={"X-Run-Id": run_id},
+    )
+
+
+@app.post("/run/gnn")
+async def run_gnn(request: Request):
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    tty_columns = payload.get("columns")
+    tty_rows = payload.get("rows")
+    run_id = payload.get("run_id")
+    dry_run = bool(payload.get("dry_run"))
+
+    epochs = payload.get("epochs")
+    top_k = payload.get("top_k")
+    min_score = payload.get("min_score")
+    sentence_model = payload.get("sentence_model")
+    device = payload.get("device")
+    mode = payload.get("mode")
+
+    if not isinstance(run_id, str) or not run_id:
+        run_id = str(int(time.time() * 1000))
+    with RUNS_LOCK:
+        if run_id in RUNS and RUNS[run_id].poll() is None:
+            return JSONResponse(
+                {"error": "Уже есть активный процесс с таким run_id", "run_id": run_id},
+                status_code=409,
+            )
+
+    cmd = build_gnn_command(
+        epochs=epochs,
+        top_k=top_k,
+        min_score=min_score,
+        sentence_model=sentence_model,
+        device=device,
+        mode=mode,
+        dry_run=dry_run
+    )
+
+    def generator():
+        yield f"$ {' '.join(cmd)}\n[run_id: {run_id}]\n\n"
+        for chunk in stream_process(cmd, run_id, tty_columns=tty_columns, tty_rows=tty_rows, extra_env=None):
             yield chunk
 
     return StreamingResponse(
