@@ -104,6 +104,20 @@ def api_graph_subgraph(cpe: str, mode: str = "full", limit: int = 1000):
             "RETURN DISTINCT p LIMIT $limit"
         )
         params = {"cpe": cpe_in, "limit": limit}
+    elif mode == "full_gnn":
+        # Полный строгий + предсказанные связи CAPEC_TO_TECHNIQUE_PRED
+        cypher = (
+            "MATCH (cpe:CPE {cpe23Uri: $cpe}) "
+            "MATCH p1=(v:CVE)-[:AFFECTS]->(cpe) "
+            "OPTIONAL MATCH p2=(w:CWE)-[:CWE_TO_CVE]->(v) "
+            "OPTIONAL MATCH p3=(cap:CAPEC)-[:CAPEC_TO_CWE]->(w) "
+            "OPTIONAL MATCH p4=(cap)-[:CAPEC_TO_TECHNIQUE]->(t:Technique) "
+            "WITH collect(p1)+collect(p2)+collect(p3)+collect(p4) AS paths "
+            "UNWIND paths AS p "
+            "WITH p WHERE p IS NOT NULL "
+            "RETURN DISTINCT p LIMIT $limit"
+        )
+        params = {"cpe": cpe_in, "limit": limit}
     else:
         cypher = (
             "MATCH (cpe:CPE {cpe23Uri: $cpe}) "
@@ -175,6 +189,30 @@ def api_graph_subgraph(cpe: str, mode: str = "full", limit: int = 1000):
             add_node(n)
         for r in getattr(p, "relationships", []):
             add_edge(r)
+
+    # Для режима full_gnn дополнительно подмешиваем предсказанные связи CAPEC_TO_TECHNIQUE_PRED
+    if mode == "full_gnn":
+        pred_cypher = (
+            "MATCH (cpe:CPE {cpe23Uri: $cpe}) "
+            "MATCH (cve:CVE)-[:AFFECTS]->(cpe) "
+            "MATCH (w:CWE)-[:CWE_TO_CVE]->(cve) "
+            "MATCH (cap:CAPEC)-[:CAPEC_TO_CWE]->(w) "
+            "MATCH (cap)-[r:CAPEC_TO_TECHNIQUE_PRED]->(t:Technique) "
+            "RETURN DISTINCT r, cap, t LIMIT $limit"
+        )
+        for row in g.run(pred_cypher, cpe=cpe_in, limit=limit):
+            try:
+                r = row.get("r") if hasattr(row, "get") else row[0]
+                cap = row.get("cap") if hasattr(row, "get") else row[1]
+                t = row.get("t") if hasattr(row, "get") else row[2]
+            except Exception:
+                r = cap = t = None
+            if cap is not None:
+                add_node(cap)
+            if t is not None:
+                add_node(t)
+            if r is not None:
+                add_edge(r)
 
     return {"nodes": list(nodes.values()), "edges": list(edges.values())}
 
@@ -459,7 +497,7 @@ def api_scenarios(cpe: str, mode: str = "strict", max_per_tactic: int = 3):
         cpe_in = cpe_in[idx:]
 
     m = (mode or "strict").strip().lower()
-    if m not in ("strict", "relaxed"):
+    if m not in ("strict", "relaxed", "gnn"):
         m = "strict"
     try:
         mpt = int(max_per_tactic)
@@ -488,7 +526,7 @@ def api_export(cpe: str, mode: str = "strict", max_per_tactic: int = 3):
         cpe_in = cpe_in[idx:]
 
     m = (mode or "strict").strip().lower()
-    if m not in ("strict", "relaxed"):
+    if m not in ("strict", "relaxed", "gnn"):
         m = "strict"
     try:
         mpt = int(max_per_tactic)

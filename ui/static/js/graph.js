@@ -244,6 +244,7 @@
         { selector: 'node.sel', style: { 'border-width': 5, 'border-color': '#000000', 'z-index': 999 }},
         { selector: 'node.neigh', style: { 'border-width': 2, 'border-color': '#9aa3b9' }},
         { selector: 'edge', style: { 'curve-style': 'bezier', 'target-arrow-shape': 'none', 'line-color': '#9aa3b2', 'width': 1.2, 'opacity': 0.9 }},
+        { selector: 'edge[type="CAPEC_TO_TECHNIQUE_PRED"]', style: { 'line-style': 'dashed' } },
       ];
     }
     return [
@@ -254,6 +255,7 @@
       { selector: 'node.sel', style: { 'border-width': 3, 'border-color': '#4f8cff', 'z-index': 999 }},
       { selector: 'node.neigh', style: { 'border-width': 2, 'border-color': '#3b4775' }},
       { selector: 'edge', style: { 'curve-style': 'bezier', 'target-arrow-shape': 'none', 'line-color': ele => edgeColor(ele.data('type')), 'width': 1.2, 'opacity': 0.85 }},
+      { selector: 'edge[type="CAPEC_TO_TECHNIQUE_PRED"]', style: { 'line-style': 'dashed' } },
     ];
   }
 
@@ -1214,6 +1216,8 @@
         return resolvedNodeColor('CAPEC', theme);
       case 'CAPEC_TO_TECHNIQUE': 
         return resolvedNodeColor('Technique', theme);
+      case 'CAPEC_TO_TECHNIQUE_PRED':
+        return resolvedNodeColor('Technique', theme);
       // Сценарии оставляем фиксированными цветами
       case 'SC_STEP': return '#8e44ad';
       case 'SC_TECH_TO_CVE': return '#8e44ad';
@@ -1359,7 +1363,9 @@
     const frag = document.createDocumentFragment();
     const meta = document.createElement('div');
     meta.className = 'sc-meta';
-    const modeName = data.mode === 'relaxed' ? 'нестрогий' : 'строгий';
+    let modeName = 'строгий';
+    if (data.mode === 'relaxed') modeName = 'нестрогий';
+    else if (data.mode === 'gnn') modeName = 'GNN (строгий)';
     meta.textContent = `Сценариев: ${data.scenarios.length} (режим: ${modeName}, техник на тактику: ${data.max_per_tactic})`;
     frag.appendChild(meta);
 

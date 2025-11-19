@@ -58,6 +58,7 @@ def _collect_evidence(
     graph: Graph,
     cpe_uri: str,
     relaxed: bool,
+    use_gnn: bool = False,
 ) -> Dict[str, Dict[str, Any]]:
     """Возвращает словарь по технике: {tech_id: {technique, cves[], cwes[], capecs[]}}.
 
@@ -66,6 +67,10 @@ def _collect_evidence(
       - 1..2 CAPEC: (cap1)-[:CAPEC_TO_TECHNIQUE]->(t), (cap2)-[:CAPEC_TO_CWE]->(w),
                     cap1 = cap2 ИЛИ (cap1)-[:CAPEC_PARENT_TO_CAPEC_CHILD]-(cap2) при relaxed,
                     далее (w)-[:CWE_TO_CVE]->(cve)-[:AFFECTS]->(cpe)
+
+    При use_gnn = True дополнительно учитываются предсказанные связи
+    CAPEC_TO_TECHNIQUE_PRED (как CAPEC_TO_TECHNIQUE), при этом логика strict/relaxed
+    остаётся прежней.
     """
 
     # Прямые связи Technique -> CWE -> CVE -> CPE (0 CAPEC)
@@ -78,14 +83,16 @@ def _collect_evidence(
         RETURN DISTINCT t, cve, w
         """
     )
-    # Через CAPEC, допускаем cap1=cap2 (1 CAPEC) и при relaxed одну связь parent<->child (2 CAPEC)
+    # Через CAPEC, допускаем cap1=cap2 (1 CAPEC) и при relaxed одну связь parent<->child (2 CAPEC).
+    # При включённом use_gnn добавляем CAPEC_TO_TECHNIQUE_PRED как альтернативу CAPEC_TO_TECHNIQUE.
+    capec_to_tech_rel = "CAPEC_TO_TECHNIQUE|CAPEC_TO_TECHNIQUE_PRED" if use_gnn else "CAPEC_TO_TECHNIQUE"
     q_capec = (
-        """
-        MATCH (cpe:CPE {cpe23Uri: $cpe})
+        f"""
+        MATCH (cpe:CPE {{cpe23Uri: $cpe}})
         MATCH (cve:CVE)-[:AFFECTS]->(cpe)
         MATCH (w:CWE)-[:CWE_TO_CVE]->(cve)
         MATCH (cap2:CAPEC)-[:CAPEC_TO_CWE]->(w)
-        MATCH (cap1:CAPEC)-[:CAPEC_TO_TECHNIQUE]->(t:Technique)
+        MATCH (cap1:CAPEC)-[:{capec_to_tech_rel}]->(t:Technique)
         WHERE cap1 = cap2 OR ($relaxed AND (cap1)-[:CAPEC_PARENT_TO_CAPEC_CHILD]-(cap2))
         RETURN DISTINCT t, cve, w, cap1, cap2
         """
@@ -155,14 +162,15 @@ def _collect_evidence(
 def generate_scenarios(
     graph: Graph,
     cpe_uri: str,
-    mode: Literal["strict", "relaxed"] = "strict",
+    mode: Literal["strict", "relaxed", "gnn"] = "strict",
     max_per_tactic: int = 3,
     max_scenarios: Optional[int] = None,
 ) -> Dict[str, Any]:
     relaxed = mode == "relaxed"
     max_scen = int(MAX_SCENARIOS if max_scenarios is None else max_scenarios)
 
-    evidence = _collect_evidence(graph, cpe_uri=cpe_uri, relaxed=relaxed)
+    use_gnn = mode == "gnn"
+    evidence = _collect_evidence(graph, cpe_uri=cpe_uri, relaxed=relaxed, use_gnn=use_gnn)
 
     # Группируем техники по тактикам
     buckets: List[Tuple[int, str, List[Dict[str, Any]]]] = []
