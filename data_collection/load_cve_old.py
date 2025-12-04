@@ -484,6 +484,7 @@ def enrich_cve_data(cve_list):
             'cvss_C_score': cvss_cia_scores['Contribution_C'],
             'cvss_I_score': cvss_cia_scores['Contribution_I'],
             'cvss_A_score': cvss_cia_scores['Contribution_A'],
+            'cvss': cvss_cia_scores.get('BaseScore', base_score),
             'epss': epss_info['epss'],
             'published': published,
             'weaknesses': weaknesses,
@@ -504,6 +505,7 @@ def sync_cve_nodes(graph, cve_list, max_retries=3):
                 MERGE (c:CVE {identifier: cve.id})
                 ON CREATE SET
                     c.description = cve.description,
+                    c.cvss = cve.cvss,
                     c.cvss_C_score = cve.cvss_C_score,
                     c.cvss_I_score = cve.cvss_I_score,
                     c.cvss_A_score = cve.cvss_A_score,
@@ -513,6 +515,7 @@ def sync_cve_nodes(graph, cve_list, max_retries=3):
                     c.patch_third_party = cve.patch_third_party
                 ON MATCH SET
                     c.description = cve.description,
+                    c.cvss = cve.cvss,
                     c.cvss_C_score = cve.cvss_C_score,
                     c.cvss_I_score = cve.cvss_I_score,
                     c.cvss_A_score = cve.cvss_A_score,

@@ -5,7 +5,7 @@ import gzip
 import json
 import time
 import datetime as dt
-from typing import List, Dict, Optional, Tuple
+from typing import Any, List, Dict, Optional, Tuple
 import hashlib
 import requests
 from py2neo import Graph
@@ -60,6 +60,33 @@ from itertools import permutations
 
 
 def calculate_separate_scores(version: str, vector_string: str, base_score: float) -> Dict[str, float]:
+    def _safe_float(val: Optional[float]) -> Optional[float]:
+        try:
+            f = float(val)
+            if f != f:
+                return None
+            return f
+        except Exception:
+            return None
+
+    def _distribute(base_val: Optional[float], contrib: Dict[str, float], precision: int = 2) -> Dict[str, float]:
+        base_val_f = _safe_float(base_val) or 0.0
+        total = sum(contrib.values())
+        if base_val_f <= 0 or total == 0:
+            return {"Contribution_C": 0.0, "Contribution_I": 0.0, "Contribution_A": 0.0}
+        weights = {k: (v / total) for k, v in contrib.items()}
+        scaled = {k: round(base_val_f * w, precision) for k, w in weights.items()}
+        # Корректируем из-за округления: добавляем остаток в метрику с максимальным весом
+        diff = round(base_val_f, precision) - sum(scaled.values())
+        if diff:
+            key = max(weights.items(), key=lambda kv: kv[1])[0]
+            scaled[key] = round(scaled.get(key, 0.0) + diff, precision)
+        return {
+            "Contribution_C": scaled.get("C", 0.0),
+            "Contribution_I": scaled.get("I", 0.0),
+            "Contribution_A": scaled.get("A", 0.0),
+        }
+
     def calculate_cvss2_scores(vector):
         CVSS_LEVEL_MAP = {"N": 0, "P": 0.276, "C": 0.684}
         AV_MAP = {"N": 1.0, "A": 0.7, "L": 0.3}
@@ -94,7 +121,6 @@ def calculate_separate_scores(version: str, vector_string: str, base_score: floa
                 contributions[metric] /= len(perms)
             return contributions
 
-        # Разбор вектора
         parts = vector.split("/")
         metric_dict = {}
         for part in parts:
@@ -111,16 +137,12 @@ def calculate_separate_scores(version: str, vector_string: str, base_score: floa
         contrib = shapley_impact_contribution(C, I, A)
         impact = calculate_impact(C, I, A)
         exploitability = calculate_exploitability(AV, AC, AU)
-        base = calculate_base_score(impact, exploitability)
+        fallback_base = calculate_base_score(impact, exploitability)
+        base_val = _safe_float(base_score)
+        if base_val is None or base_val <= 0:
+            base_val = fallback_base
 
-        total = contrib["C"] + contrib["I"] + contrib["A"]
-        if total == 0:
-            return {"Contribution_C": 0.0, "Contribution_I": 0.0, "Contribution_A": 0.0}
-        return {
-            "Contribution_C": round(base * contrib["C"] / total, 2),
-            "Contribution_I": round(base * contrib["I"] / total, 2),
-            "Contribution_A": round(base * contrib["A"] / total, 2),
-        }
+        return _distribute(base_val, contrib, precision=2)
 
     def calculate_cvss3_scores(vector):
         CVSS_LEVEL_MAP = {"N": 0, "L": 0.22, "H": 0.56}
@@ -179,16 +201,12 @@ def calculate_separate_scores(version: str, vector_string: str, base_score: floa
         contrib = shapley_impact_contribution(C, I, A, scope=scope)
         impact = calculate_impact(C, I, A, scope=scope)
         exploitability = calculate_exploitability(AV, AC, PR, UI)
-        base = calculate_base_score(impact, exploitability)
+        fallback_base = calculate_base_score(impact, exploitability)
+        base_val = _safe_float(base_score)
+        if base_val is None or base_val <= 0:
+            base_val = fallback_base
 
-        total = contrib["C"] + contrib["I"] + contrib["A"]
-        if total == 0:
-            return {"Contribution_C": 0.0, "Contribution_I": 0.0, "Contribution_A": 0.0}
-        return {
-            "Contribution_C": round(base * contrib["C"] / total, 1),
-            "Contribution_I": round(base * contrib["I"] / total, 1),
-            "Contribution_A": round(base * contrib["A"] / total, 1),
-        }
+        return _distribute(base_val, contrib, precision=2)
 
     def calculate_cvss4_scores(vector, base_score):
         CVSS_LEVEL_MAP = {"N": 0, "L": 1, "H": 2}
@@ -203,14 +221,12 @@ def calculate_separate_scores(version: str, vector_string: str, base_score: floa
         C = CVSS_LEVEL_MAP.get(metric_dict.get("VC", "N"), 0)
         I = CVSS_LEVEL_MAP.get(metric_dict.get("VI", "N"), 0)
         A = CVSS_LEVEL_MAP.get(metric_dict.get("VA", "N"), 0)
-        total = C + I + A
-        if total == 0:
-            return {"Contribution_C": 0.0, "Contribution_I": 0.0, "Contribution_A": 0.0}
-        return {
-            "Contribution_C": round(base_score * C / total, 2),
-            "Contribution_I": round(base_score * I / total, 2),
-            "Contribution_A": round(base_score * A / total, 2),
-        }
+        contrib = {"C": C, "I": I, "A": A}
+
+        base_val = _safe_float(base_score)
+        if base_val is None or base_val < 0:
+            base_val = 0.0
+        return _distribute(base_val, contrib, precision=2)
 
     if version.startswith("2."):
         return calculate_cvss2_scores(vector_string)
@@ -226,18 +242,44 @@ def calculate_separate_scores(version: str, vector_string: str, base_score: floa
 def best_cvss_vector_and_base(metrics: dict) -> Tuple[str, float, str]:
     if not metrics:
         return "", 0.0, ""
-    for key, ver in (("cvssMetricV31", "3.1"), ("cvssMetricV30", "3.0"), ("cvssMetricV2", "2.0")):
+    preferred_keys = [
+        ("cvssMetricV40", "4.0"),
+        ("cvssMetricV4", "4.0"),  # на всякий случай учитываем оба варианта ключа
+        ("cvssMetricV31", "3.1"),
+        ("cvssMetricV30", "3.0"),
+        ("cvssMetricV2", "2.0"),
+    ]
+
+    def _pick_metric(arr: list):
+        if not isinstance(arr, list) or not arr:
+            return None
+        try:
+            primary = next((m for m in arr if isinstance(m, dict) and m.get("type") == "Primary"), None)
+            return primary or arr[0]
+        except Exception:
+            return arr[0]
+
+    def _as_float(val: Any) -> float:
+        try:
+            return float(val)
+        except Exception:
+            return 0.0
+
+    for key, ver in preferred_keys:
         arr = metrics.get(key)
-        if arr:
-            data = arr[0]
-            if "cvssData" in data:
-                base = float(data["cvssData"].get("baseScore", 0.0))
-                vec = data["cvssData"].get("vectorString", "")
-                ver = data["cvssData"].get("version", ver)
-            else:
-                base = float(data.get("baseScore", 0.0))
-                vec = data.get("vectorString", "")
-            return vec, base, ver
+        data = _pick_metric(arr)
+        if not isinstance(data, dict):
+            continue
+        if "cvssData" in data:
+            cvss = data.get("cvssData") or {}
+            base = _as_float(cvss.get("baseScore"))
+            vec = cvss.get("vectorString", "")
+            ver = cvss.get("version", ver)
+        else:
+            base = _as_float(data.get("baseScore"))
+            vec = data.get("vectorString", "")
+            ver = data.get("version", ver)
+        return vec, base, ver
     return "", 0.0, ""
 
 
@@ -289,6 +331,7 @@ def extract_from_vuln(vuln: dict):
         "cvss_C_score": cia.get("Contribution_C", 0.0),
         "cvss_I_score": cia.get("Contribution_I", 0.0),
         "cvss_A_score": cia.get("Contribution_A", 0.0),
+        "cvss": base or 0.0,
         "published": published,
         "weaknesses": list(set(weaknesses)),
         "cpes": list(set(cpes)),
@@ -430,6 +473,7 @@ def upsert_batch(graph: Graph, batch: List[dict], epss_map: Dict[str, Dict[str, 
     MERGE (v:CVE {identifier: c.id})
     ON CREATE SET
       v.description = c.description,
+      v.cvss = c.cvss,
       v.cvss_C_score = c.cvss_C_score,
       v.cvss_I_score = c.cvss_I_score,
       v.cvss_A_score = c.cvss_A_score,
@@ -440,6 +484,7 @@ def upsert_batch(graph: Graph, batch: List[dict], epss_map: Dict[str, Dict[str, 
       v.patch_third_party = c.patch_third_party
     ON MATCH SET
       v.description = c.description,
+      v.cvss = c.cvss,
       v.cvss_C_score = c.cvss_C_score,
       v.cvss_I_score = c.cvss_I_score,
       v.cvss_A_score = c.cvss_A_score,

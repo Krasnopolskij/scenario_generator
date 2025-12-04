@@ -272,5 +272,5 @@ body.page-graph.light-theme .scenarios::-webkit-scrollbar-track { background: #f
 body.page-graph.light-theme .scenario-steps::-webkit-scrollbar-thumb,
 body.page-graph.light-theme .scenarios::-webkit-scrollbar-thumb { background: #d6dde8; border: 1px solid #cbd3e1; border-radius: 8px; }
 
-/* Светлая тема: фон оверлея загрузки мягче */
+/* фон оверлея загрузки мягче */
 body.page-graph.light-theme #graph .graph-loading { background: rgba(255,255,255,0.65); color: var(--text); }

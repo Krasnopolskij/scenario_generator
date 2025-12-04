@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import Any, Dict, List, Literal, Optional, Tuple
 from py2neo import Graph
+from scenario_generation.metrics import enrich_cves_with_scores
 
 # Максимум сценариев возвращаем из API
 MAX_SCENARIOS: int = 30
@@ -171,6 +172,10 @@ def generate_scenarios(
 
     use_gnn = mode == "gnn"
     evidence = _collect_evidence(graph, cpe_uri=cpe_uri, relaxed=relaxed, use_gnn=use_gnn)
+
+    # Добавляем epss_norm и damage к CVE в рамках каждой техники
+    for rec in evidence.values():
+        enrich_cves_with_scores(rec.get("cves") or [])
 
     # Группируем техники по тактикам
     buckets: List[Tuple[int, str, List[Dict[str, Any]]]] = []

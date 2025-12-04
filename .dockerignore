@@ -21,7 +21,6 @@ env
 
 # Пока не является рабочей частью проекта
 gnn_mvp
-gnn
 data_examples
 
 # OS

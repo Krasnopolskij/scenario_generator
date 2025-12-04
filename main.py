@@ -630,8 +630,7 @@ def api_scenarios(cpe: str, mode: str = "strict", max_per_tactic: int = 3):
 @app.get("/api/export")
 def api_export(cpe: str, mode: str = "strict", max_per_tactic: int = 3):
     """Экспорт сценариев в облегчённом JSON-формате:
-    - primary: группы тактик с техниками и списками CVE (только ID)
-    - linear: все комбинации (одна техника на тактику), без ограничений по числу сценариев
+    - primary: группы тактик с техниками и списками CVE (полный набор метрик)
     """
     g = get_graph()
     # Нормализуем вход
@@ -655,7 +654,7 @@ def api_export(cpe: str, mode: str = "strict", max_per_tactic: int = 3):
     data = generate_scenarios(g, cpe_in, mode=m, max_per_tactic=mpt)
     mega = list(data.get("mega") or [])
 
-    # primary -> тактики -> техники (id) -> cve_ids
+    # primary -> тактики -> техники (id) -> cves (полный набор метрик)
     primary = []
     for col in sorted(mega, key=lambda x: (x.get("tactic_order") or 0)):
         tactic = col.get("tactic")
@@ -667,77 +666,33 @@ def api_export(cpe: str, mode: str = "strict", max_per_tactic: int = 3):
             tid = tprops.get("identifier")
             if not tid:
                 continue
-            cve_ids = []
+            cves = []
             for cv in (st.get("cves") or []):
                 cprops = (cv or {}).get("props") or {}
                 cid = cprops.get("identifier")
-                if cid:
-                    cve_ids.append(cid)
+                if not cid:
+                    continue
+                src = "first.org" if bool(cprops.get("epss_from_first")) else "generated"
+                cves.append({
+                    "cve_id": cid,
+                    "epss": cprops.get("epss"),
+                    "epss_source": src,
+                    "cvss": cprops.get("cvss") or 0,
+                    "cvss_C_score": cprops.get("cvss_C_score") or 0,
+                    "cvss_A_score": cprops.get("cvss_A_score") or 0,
+                    "cvss_I_score": cprops.get("cvss_I_score") or 0,
+                    "epss_norm": cprops.get("epss_norm") or 0,
+                    "damage": cprops.get("damage") or 0,
+                })
             items.append({
                 "technique_id": tid,
-                "cve_ids": cve_ids,
+                "cves": cves,
             })
         primary.append({
             "tactic": tactic,
             "tactic_order": order,
             "techniques": items,
         })
-
-    # linear, все комбинации по одной технике на тактику
-    cols = []
-    for col in sorted(mega, key=lambda x: (x.get("tactic_order") or 0)):
-        entries = []
-        for st in (col.get("techniques") or []):
-            tech = (st or {}).get("technique") or {}
-            tprops = tech.get("props") or {}
-            tid = tprops.get("identifier")
-            if not tid:
-                continue
-            # Разворачиваем CVE со значениями EPSS и компонент CVSS
-            cves = []
-            for cv in (st.get("cves") or []):
-                if not cv:
-                    continue
-                cprops = (cv.get("props") or {})
-                cid = cprops.get("identifier")
-                if not cid:
-                    continue
-                # источник EPSS, first.org (если epss_from_first = true), иначе generated
-                src = "first.org" if bool(cprops.get("epss_from_first")) else "generated"
-                cves.append({
-                    "cve_id": cid,
-                    "epss": cprops.get("epss"),
-                    "epss_source": src,
-                    "cvss_C_score": cprops.get("cvss_C_score") or 0,
-                    "cvss_A_score": cprops.get("cvss_A_score") or 0,
-                    "cvss_I_score": cprops.get("cvss_I_score") or 0,
-                })
-            entries.append({
-                "tactic": col.get("tactic"),
-                "technique_id": tid,
-                "cves": cves,
-            })
-        cols.append(entries)
-
-    # Перебор всех комбинаций
-    linear = []
-    if cols and all(len(c) > 0 for c in cols):
-        stack = [0] * len(cols)
-        while True:
-            pick = [cols[i][stack[i]] for i in range(len(cols))]
-            linear.append({
-                "scenario_id": f"scn-{len(linear)+1:03d}",
-                "techniques": pick,
-            })
-            idx2 = len(cols) - 1
-            while idx2 >= 0:
-                stack[idx2] += 1
-                if stack[idx2] < len(cols[idx2]):
-                    break
-                stack[idx2] = 0
-                idx2 -= 1
-            if idx2 < 0:
-                break
 
     # Заголовок и метаданные (локальное время с часовым поясом)
     now_iso = dt.datetime.now().astimezone().replace(microsecond=0).isoformat()
@@ -749,10 +704,8 @@ def api_export(cpe: str, mode: str = "strict", max_per_tactic: int = 3):
             "date_created": now_iso,
             "mode": m,
             "max_per_tactic": mpt,
-            "linear_count": len(linear),
         },
         "primary": primary,
-        "linear": linear,
     }
 
     import json as _json
