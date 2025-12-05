@@ -64,11 +64,17 @@ def _calc_damage(cves: List[Dict[str, Any]]) -> List[float]:
 
 
 def enrich_cves_with_scores(cves: List[Dict[str, Any]]) -> None:
-    # Добавляет epss_norm и damage в props каждого CVE шага
+    # Добавляет epss_norm damage и risk в props каждого CVE шага
     if not cves:
         return
     epss_norm_values = _calc_epss_norm(cves)
     damage_values = _calc_damage(cves)
+    risk_values: List[float] = []
+    if epss_norm_values and damage_values:
+        for idx in range(len(cves)):
+            e = epss_norm_values[idx] if idx < len(epss_norm_values) else 0.0
+            d = damage_values[idx] if idx < len(damage_values) else 0.0
+            risk_values.append(e * d)
 
     for idx, cv in enumerate(cves):
         if cv is None:
@@ -78,3 +84,5 @@ def enrich_cves_with_scores(cves: List[Dict[str, Any]]) -> None:
             props["epss_norm"] = epss_norm_values[idx]
         if idx < len(damage_values):
             props["damage"] = damage_values[idx]
+        if idx < len(risk_values):
+            props["risk"] = risk_values[idx]
