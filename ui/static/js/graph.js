@@ -88,7 +88,7 @@
         'collection': 'Сбор данных',
         'command-and-control': 'Организация управления',
         'exfiltration': 'Эксфильтрация данных',
-        'impact': 'Деструктивное оздействие',
+        'impact': 'Деструктивное воздействие',
       };
       return map[key] || raw;
     } catch { return name; }
