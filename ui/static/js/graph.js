@@ -63,8 +63,8 @@
   let currentScenarioData = null; // выбранный сценарий для повторной перерисовки
   let lastMega = null; // mega для первичного сценария
   // Состояние ключей в сценариях
-  let linearClosedKeyByTechnique = new Map();
-  let primaryClosedKeyByTechnique = new Map();
+  let linearClosedKeyByTactic = new Map();
+  let primaryClosedKeyByTactic = new Map();
   let followKeysHandler = null;
   let syncingKeys = false;
 
@@ -461,36 +461,36 @@
     if (!cy) return;
     const pivots = cy.nodes("[group='KeyPivot']");
     if (!pivots || pivots.length === 0) return;
-    const byTech = new Map();
+    const byTactic = new Map();
     pivots.forEach(p => {
-      const techId = String(p.data('keyTechId') || '');
-      if (!techId) return;
+      const tacticId = String(p.data('keyTacticId') || '');
+      if (!tacticId) return;
       const epss = Number(p.data('keyEpss') || 0);
-      const cur = byTech.get(techId);
-      if (!cur || epss > cur.epss) byTech.set(techId, { pivot: p, epss });
+      const cur = byTactic.get(tacticId);
+      if (!cur || epss > cur.epss) byTactic.set(tacticId, { pivot: p, epss });
     });
-    byTech.forEach(({ pivot }) => {
+    byTactic.forEach(({ pivot }) => {
       toggleKeyForPivot(pivot, kind);
     });
   }
 
   function toggleKeyForPivot(pivot, kind) {
     if (!pivot || !pivot.length) return;
-    const techId = String(pivot.data('keyTechId') || '');
-    if (!techId) {
+    const tacticId = String(pivot.data('keyTacticId') || '');
+    if (!tacticId) {
       pivot.data('keyState', pivot.data('keyState') === 'closed' ? 'open' : 'closed');
       syncKeyPositionsForPivot(pivot);
       return;
     }
-    const map = (kind === 'primary') ? primaryClosedKeyByTechnique : linearClosedKeyByTechnique;
+    const map = (kind === 'primary') ? primaryClosedKeyByTactic : linearClosedKeyByTactic;
     const curState = pivot.data('keyState') === 'closed' ? 'closed' : 'open';
     if (curState === 'closed') {
       pivot.data('keyState', 'open');
-      if (map.get(techId) === String(pivot.id())) map.delete(techId);
+      if (map.get(tacticId) === String(pivot.id())) map.delete(tacticId);
       syncKeyPositionsForPivot(pivot);
       return;
     }
-    const prevId = map.get(techId);
+    const prevId = map.get(tacticId);
     if (prevId && prevId !== String(pivot.id())) {
       const prev = cy ? cy.getElementById(prevId) : null;
       if (prev && prev.length) {
@@ -498,7 +498,7 @@
         syncKeyPositionsForPivot(prev);
       }
     }
-    map.set(techId, String(pivot.id()));
+    map.set(tacticId, String(pivot.id()));
     pivot.data('keyState', 'closed');
     syncKeyPositionsForPivot(pivot);
   }
@@ -561,6 +561,7 @@
           const src = String(e.data('source') || e.source().id());
           const tgt = String(e.data('target') || e.target().id());
           const techId = String(e.data('stepTechId') || '');
+          const tacticId = String(e.data('stepTactic') || '');
           const srcNode = cy.getElementById(src);
           const tgtNode = cy.getElementById(tgt);
           if (!srcNode.length || !tgtNode.length) { e.data('keyInited', true); return; }
@@ -577,12 +578,12 @@
           if (cy.getElementById(pivotId).length) { e.data('keyInited', true); return; }
           const geom = computeKeyGeometry(srcNode.position(), tgtNode.position(), 'open');
           try {
-            cy.add({ group: 'nodes', data: { id: leftId, label: '', group: 'KeyContact', keyPivotId: pivotId, keyTechId: techId, keyCveNodeId: src, keyTargetId: tgt }, position: geom.left, grabbable: false, selectable: false });
-            cy.add({ group: 'nodes', data: { id: rightId, label: '', group: 'KeyContact', keyPivotId: pivotId, keyTechId: techId, keyCveNodeId: src, keyTargetId: tgt, keyRight: true }, position: geom.right, grabbable: false, selectable: false });
-            cy.add({ group: 'nodes', data: { id: pivotId, label: '', group: 'KeyPivot', keyState: 'open', keyTechId: techId, keyCveNodeId: src, keyTargetId: tgt, keyLeftId: leftId, keyRightId: rightId, keyEpss: keyEpss }, position: geom.pivot, grabbable: false, selectable: false });
-            cy.add({ group: 'edges', data: { id: `${prefix}_e1`, source: src, target: leftId, type: 'SC_KEY_SEG', keyTechId: techId, keyCveNodeId: src } });
-            cy.add({ group: 'edges', data: { id: `${prefix}_e2`, source: leftId, target: pivotId, type: 'SC_KEY_SWITCH', keyTechId: techId, keyCveNodeId: src } });
-            cy.add({ group: 'edges', data: { id: `${prefix}_e3`, source: rightId, target: tgt, type: 'SC_KEY_ARROW', keyTechId: techId, keyCveNodeId: src } });
+            cy.add({ group: 'nodes', data: { id: leftId, label: '', group: 'KeyContact', keyPivotId: pivotId, keyTechId: techId, keyTacticId: tacticId, keyCveNodeId: src, keyTargetId: tgt }, position: geom.left, grabbable: false, selectable: false });
+            cy.add({ group: 'nodes', data: { id: rightId, label: '', group: 'KeyContact', keyPivotId: pivotId, keyTechId: techId, keyTacticId: tacticId, keyCveNodeId: src, keyTargetId: tgt, keyRight: true }, position: geom.right, grabbable: false, selectable: false });
+            cy.add({ group: 'nodes', data: { id: pivotId, label: '', group: 'KeyPivot', keyState: 'open', keyTechId: techId, keyTacticId: tacticId, keyCveNodeId: src, keyTargetId: tgt, keyLeftId: leftId, keyRightId: rightId, keyEpss: keyEpss }, position: geom.pivot, grabbable: false, selectable: false });
+            cy.add({ group: 'edges', data: { id: `${prefix}_e1`, source: src, target: leftId, type: 'SC_KEY_SEG', keyTechId: techId, keyTacticId: tacticId, keyCveNodeId: src } });
+            cy.add({ group: 'edges', data: { id: `${prefix}_e2`, source: leftId, target: pivotId, type: 'SC_KEY_SWITCH', keyTechId: techId, keyTacticId: tacticId, keyCveNodeId: src } });
+            cy.add({ group: 'edges', data: { id: `${prefix}_e3`, source: rightId, target: tgt, type: 'SC_KEY_ARROW', keyTechId: techId, keyTacticId: tacticId, keyCveNodeId: src } });
           } catch {}
           try { e.data('keyInited', true); e.style('display', 'none'); } catch {}
         } catch {}
@@ -603,6 +604,7 @@
 	          const src = String(e.data('source') || e.source().id());
 	          const tgt = String(e.data('target') || e.target().id());
 	          const techId = String(e.data('stepTechId') || '');
+	          const tacticId = String(e.data('stepTactic') || '');
 	          const srcNode = cy.getElementById(src);
 	          const tgtNode = cy.getElementById(tgt);
 	          if (!srcNode.length || !tgtNode.length) { e.data('keyInited', true); return; }
@@ -621,12 +623,12 @@
 	          if (cy.getElementById(pivotId).length) { e.data('keyInited', true); return; }
 	          const geom = computeKeyGeometry(srcNode.position(), tgtNode.position(), 'open');
 	          try {
-	            cy.add({ group: 'nodes', data: { id: leftId, label: '', group: 'KeyContact', keyPivotId: pivotId, keyTechId: techId, keyCveNodeId: src, keyTargetId: tgt }, position: geom.left, grabbable: false, selectable: false });
-	            cy.add({ group: 'nodes', data: { id: rightId, label: '', group: 'KeyContact', keyPivotId: pivotId, keyTechId: techId, keyCveNodeId: src, keyTargetId: tgt, keyRight: true }, position: geom.right, grabbable: false, selectable: false });
-	            cy.add({ group: 'nodes', data: { id: pivotId, label: '', group: 'KeyPivot', keyState: 'open', keyTechId: techId, keyCveNodeId: src, keyTargetId: tgt, keyLeftId: leftId, keyRightId: rightId, keyEpss: keyEpss }, position: geom.pivot, grabbable: false, selectable: false });
-	            cy.add({ group: 'edges', data: { id: `${prefix}_e1`, source: src, target: leftId, type: 'SC_KEY_SEG', keyTechId: techId, keyCveNodeId: src } });
-	            cy.add({ group: 'edges', data: { id: `${prefix}_e2`, source: leftId, target: pivotId, type: 'SC_KEY_SWITCH', keyTechId: techId, keyCveNodeId: src } });
-	            cy.add({ group: 'edges', data: { id: `${prefix}_e3`, source: rightId, target: tgt, type: 'SC_KEY_ARROW', keyTechId: techId, keyCveNodeId: src } });
+	            cy.add({ group: 'nodes', data: { id: leftId, label: '', group: 'KeyContact', keyPivotId: pivotId, keyTechId: techId, keyTacticId: tacticId, keyCveNodeId: src, keyTargetId: tgt }, position: geom.left, grabbable: false, selectable: false });
+	            cy.add({ group: 'nodes', data: { id: rightId, label: '', group: 'KeyContact', keyPivotId: pivotId, keyTechId: techId, keyTacticId: tacticId, keyCveNodeId: src, keyTargetId: tgt, keyRight: true }, position: geom.right, grabbable: false, selectable: false });
+	            cy.add({ group: 'nodes', data: { id: pivotId, label: '', group: 'KeyPivot', keyState: 'open', keyTechId: techId, keyTacticId: tacticId, keyCveNodeId: src, keyTargetId: tgt, keyLeftId: leftId, keyRightId: rightId, keyEpss: keyEpss }, position: geom.pivot, grabbable: false, selectable: false });
+	            cy.add({ group: 'edges', data: { id: `${prefix}_e1`, source: src, target: leftId, type: 'SC_KEY_SEG', keyTechId: techId, keyTacticId: tacticId, keyCveNodeId: src } });
+	            cy.add({ group: 'edges', data: { id: `${prefix}_e2`, source: leftId, target: pivotId, type: 'SC_KEY_SWITCH', keyTechId: techId, keyTacticId: tacticId, keyCveNodeId: src } });
+	            cy.add({ group: 'edges', data: { id: `${prefix}_e3`, source: rightId, target: tgt, type: 'SC_KEY_ARROW', keyTechId: techId, keyTacticId: tacticId, keyCveNodeId: src } });
 	          } catch {}
 	          try { e.data('keyInited', true); } catch {}
 	        } catch {}
@@ -1129,9 +1131,6 @@
   }
 
   function applyViewModeAvailability() {
-    const vm = (viewModeSel && viewModeSel.value) || 'linear';
-    const disable = vm === 'primary';
-    if (scMaxPerTacticInput) scMaxPerTacticInput.disabled = disable;
     if (showAllCves) showAllCves.disabled = false;
   }
 
@@ -1334,24 +1333,123 @@
     inspector.innerHTML = rows.join('');
   }
 
+  // Нормализует список искомых элементов: допускаются строки и объекты { id, techId }
+  function normalizeWantedIds(list) {
+    const out = [];
+    (list || []).forEach(v => {
+      if (v == null) return;
+      if (typeof v === 'object') {
+        const id = v.id != null ? String(v.id) : '';
+        if (!id) return;
+        const techId = v.techId != null ? String(v.techId) : '';
+        out.push(techId ? { id, techId } : { id });
+      } else {
+        const id = String(v);
+        if (id) out.push({ id });
+      }
+    });
+    return out;
+  }
+
+  // Находит узлы по id, а также по сырым идентификаторам (raw.id, raw.props.identifier)
+  // Если указан techId, пытаемся сопоставить только узлы, привязанные к конкретной технике (моно-сценарий).
+  function resolveNodesByIds(ids, group) {
+    if (!cy || !Array.isArray(ids) || ids.length === 0) return cy ? cy.collection() : null;
+    const wanted = normalizeWantedIds(ids);
+    if (wanted.length === 0) return cy.collection();
+    const isConnectedToTech = (node, techId) => {
+      if (!techId || !node || !node.connectedEdges) return false;
+      try {
+        let ok = false;
+        node.connectedEdges().forEach(e => {
+          if (ok) return;
+          const s = String(e.data('source') || (e.source && e.source().id && e.source().id()) || '');
+          const t = String(e.data('target') || (e.target && e.target().id && e.target().id()) || '');
+          if (s === techId || t === techId) ok = true;
+        });
+        return ok;
+      } catch { return false; }
+    };
+    try {
+      const pool = group ? cy.nodes(`[group='${group}']`) : cy.nodes();
+      return pool.filter(n => {
+        const nid = String(n.id());
+        const nTech = n.data('techId') != null ? String(n.data('techId')) : '';
+        for (const w of wanted) {
+          const wid = w.id;
+          const wtech = w.techId || '';
+          if (wtech && nTech && wtech !== nTech) continue;
+          let matches = false;
+          if (nid === wid) matches = true;
+          const raw = n.data('raw') || {};
+          const rawId = raw.id != null ? String(raw.id) : '';
+          if (!matches && rawId && rawId === wid) matches = true;
+          const ident = (raw.props && raw.props.identifier != null) ? String(raw.props.identifier) : '';
+          if (!matches && ident && ident === wid) matches = true;
+          if (!matches) continue;
+          if (wtech) {
+            if (nTech && nTech === wtech) return true;
+            if (isConnectedToTech(n, wtech)) return true;
+            continue;
+          }
+          return true;
+        }
+        return false;
+      });
+    } catch {
+      return (cy && cy.collection) ? cy.collection() : null;
+    }
+  }
+
   function highlightNodesByIds(ids) {
     if (!cy || !Array.isArray(ids) || ids.length === 0) return;
-    // Снимаем прошлую подсветку
     cy.elements().removeClass('sel neigh');
-    // Собираем единую коллекцию из всех найденных элементов
-    let col = cy.collection();
-    for (const rawId of ids) {
-      const id = String(rawId);
-      const ele = cy.getElementById(id);
-      if (ele && ele.length) {
-        col = col.union(ele);
-      }
-    }
-    if (!col || col.length === 0) return;
-    col.addClass('sel');
-    col.closedNeighborhood().difference(col).addClass('neigh');
+    const nodes = resolveNodesByIds(ids);
+    if (!nodes || nodes.length === 0) return;
+    nodes.addClass('sel');
+    nodes.closedNeighborhood().difference(nodes).addClass('neigh');
     // Не сохраняем подсветку в снимок; не перетираем снимок, когда отображается сценарий
     if (!isScenarioView) trySaveSnapshot();
+  }
+
+  function applyKeySelectionForCves(cveIds) {
+    if (!cy || !isScenarioView) return;
+    if (closeAllKeys && closeAllKeys.checked) return;
+    if (getProfile() !== 'mono') return;
+    const pivots = cy.nodes("[group='KeyPivot']");
+    if (!pivots || pivots.length === 0) return;
+    const kind = (currentScenarioId === 'PRIMARY') ? 'primary' : 'linear';
+    const resolvedCves = resolveNodesByIds(cveIds, 'CVE');
+    const wanted = normalizeWantedIds(cveIds);
+    const idsForKeys = [];
+    if (resolvedCves && resolvedCves.length) {
+      resolvedCves.forEach(n => idsForKeys.push(String(n.id())));
+    }
+    if (!idsForKeys.length) {
+      wanted.forEach(w => { if (w.id) idsForKeys.push(String(w.id)); });
+    }
+    const cveSet = new Set(idsForKeys);
+    // Открываем все, затем замыкаем нужные
+    pivots.forEach(p => { p.data('keyState', 'open'); });
+    const best = new Map(); // tactic -> {pivot, epss}
+    pivots.forEach(p => {
+      const cid = String(p.data('keyCveNodeId') || '');
+      const tac = String(p.data('keyTacticId') || '');
+      if (!cid || !tac) return;
+      if (!cveSet.has(cid)) return;
+      const epss = Number(p.data('keyEpss') || 0);
+      const cur = best.get(tac);
+      if (!cur || epss > cur.epss) best.set(tac, { pivot: p, epss });
+    });
+    const map = (kind === 'primary') ? primaryClosedKeyByTactic : linearClosedKeyByTactic;
+    map.clear();
+    best.forEach((val, tac) => {
+      const p = val.pivot;
+      p.data('keyState', 'closed');
+      map.set(tac, String(p.id()));
+      syncKeyPositionsForPivot(p);
+    });
+    syncAllKeyPositions();
   }
 
   async function generateScenarios() {
@@ -1401,20 +1499,31 @@
       head.className = 'scenario-head';
       const title = document.createElement('div');
       title.className = 'scenario-title';
-      title.textContent = `${sc.id} • score ${Number(sc.score || 0).toFixed(1)}`;
+      title.textContent = `Риск сценария ${sc.id}: ${Number(sc.score || 0).toFixed(5)}`;
       const act = document.createElement('div');
       act.className = 'scenario-actions';
       const btn = document.createElement('button');
       btn.textContent = 'Подсветить на графе';
       btn.addEventListener('click', () => {
         const ids = [];
+        const cveIds = [];
         for (const step of sc.steps || []) {
-          const t = step.technique; if (t && t.id) ids.push(String(t.id));
-          for (const c of (step.cves || [])) { if (c && c.id) ids.push(String(c.id)); }
-          for (const w of (step.cwes || [])) { if (w && w.id) ids.push(String(w.id)); }
-          for (const cp of (step.capecs || [])) { if (cp && cp.id) ids.push(String(cp.id)); }
+          const t = step.technique;
+          const tid = t && t.id ? String(t.id) : '';
+          if (tid) ids.push({ id: tid });
+          for (const c of (step.cves || [])) {
+            if (c && c.id) {
+              const cid = String(c.id);
+              const payload = tid ? { id: cid, techId: tid } : { id: cid };
+              ids.push(payload);
+              cveIds.push(payload);
+            }
+          }
+          for (const w of (step.cwes || [])) { if (w && w.id) ids.push({ id: String(w.id) }); }
+          for (const cp of (step.capecs || [])) { if (cp && cp.id) ids.push({ id: String(cp.id) }); }
         }
         highlightNodesByIds(ids);
+        applyKeySelectionForCves(cveIds);
       });
       act.appendChild(btn);
       const btnShow = document.createElement('button');
@@ -1482,17 +1591,36 @@
           chip.className = 'chip';
           chip.textContent = (cv.props && cv.props.identifier) || '';
           chip.title = (cv.props && cv.props.description) || '';
-          chip.addEventListener('click', (e) => { e.stopPropagation(); if (cv.id) highlightNodesByIds([String(cv.id)]); });
+          chip.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (cv && cv.id) {
+              const tid = st && st.technique && st.technique.id ? String(st.technique.id) : '';
+              const payload = tid ? { id: String(cv.id), techId: tid } : { id: String(cv.id) };
+              highlightNodesByIds([payload]);
+              applyKeySelectionForCves([payload]);
+            }
+          });
           right.appendChild(chip);
         });
         row.appendChild(left); row.appendChild(right);
-        row.addEventListener('click', () => {
-          const ids = [];
-          const t = st.technique; if (t && t.id) ids.push(String(t.id));
-          for (const c of (st.cves || [])) { if (c && c.id) ids.push(String(c.id)); }
-          for (const w of (st.cwes || [])) { if (w && w.id) ids.push(String(w.id)); }
-          for (const cp of (st.capecs || [])) { if (cp && cp.id) ids.push(String(cp.id)); }
-          highlightNodesByIds(ids);
+      row.addEventListener('click', () => {
+        const ids = [];
+        const cveIds = [];
+        const t = st.technique;
+        const tid = t && t.id ? String(t.id) : '';
+        if (tid) ids.push({ id: tid });
+        for (const c of (st.cves || [])) {
+          if (c && c.id) {
+            const cid = String(c.id);
+            const payload = tid ? { id: cid, techId: tid } : { id: cid };
+            ids.push(payload);
+            cveIds.push(payload);
+          }
+        }
+        for (const w of (st.cwes || [])) { if (w && w.id) ids.push({ id: String(w.id) }); }
+        for (const cp of (st.capecs || [])) { if (cp && cp.id) ids.push({ id: String(cp.id) }); }
+        highlightNodesByIds(ids);
+        applyKeySelectionForCves(cveIds);
         });
         steps.appendChild(row);
       });
@@ -1516,7 +1644,7 @@
       layout: { name: 'preset', fit: true, padding: 20 }
     });
     if (profile === 'mono') {
-      linearClosedKeyByTechnique = new Map();
+      linearClosedKeyByTactic = new Map();
       initScenarioKeysLinear();
       bindKeyFollow();
       bindKeyClick('linear');
@@ -1887,7 +2015,7 @@
         }
         if (targetId) {
           const e2 = `cv_${tid}_${cid}_to_${targetId}`;
-          elements.push({ data:{ id: e2, source: id, target: targetId, type: 'SC_STEP', stepTechId: tid } });
+          elements.push({ data:{ id: e2, source: id, target: targetId, type: 'SC_STEP', stepTechId: tid, stepTactic: st.tactic || '' } });
         }
       }
     }
@@ -2072,14 +2200,15 @@
         // Замкнуть все ключи без ограничения по технике
         pivots.forEach(p => {
           p.data('keyState', 'closed');
-          if (kind === 'primary') primaryClosedKeyByTechnique.set(String(p.data('keyTechId') || ''), String(p.id()));
-          else linearClosedKeyByTechnique.set(String(p.data('keyTechId') || ''), String(p.id()));
+          const tac = String(p.data('keyTacticId') || '');
+          if (kind === 'primary') primaryClosedKeyByTactic.set(tac, String(p.id()));
+          else linearClosedKeyByTactic.set(tac, String(p.id()));
           syncKeyPositionsForPivot(p);
         });
       } else {
         // Вернуть поведение по умолчанию и автозамкнуть один ключ на шаг
-        if (kind === 'primary') primaryClosedKeyByTechnique = new Map();
-        else linearClosedKeyByTechnique = new Map();
+        if (kind === 'primary') primaryClosedKeyByTactic = new Map();
+        else linearClosedKeyByTactic = new Map();
         pivots.forEach(p => { p.data('keyState', 'open'); });
         syncAllKeyPositions();
         autoCloseBestKeys(kind);
@@ -2147,7 +2276,7 @@
       layout: { name: 'preset', fit: true, padding: 20 }
     });
     if (getProfile() === 'mono') {
-      primaryClosedKeyByTechnique = new Map();
+      primaryClosedKeyByTactic = new Map();
       bindKeyFollow();
       bindKeyClick('primary');
     }
@@ -2240,7 +2369,7 @@
         const y = placeY(base.y + (i - (cves.length-1)/2) * CVE_GAP_Y);
         const cvss = cvssSumFromRaw(cv);
         if (cy.getElementById(nodeId).length === 0) {
-          try { cy.add({ group:'nodes', data:{ id: nodeId, label:'CVE', group:'CVE', raw: cv, cvss: cvss }, position:{ x, y } }); } catch {}
+          try { cy.add({ group:'nodes', data:{ id: nodeId, label:'CVE', group:'CVE', raw: cv, cvss: cvss, techId: tid }, position:{ x, y } }); } catch {}
         }
         const eid = `pg_tc_${tid}_${cid}`;
 	        if (cy.getElementById(eid).length === 0) {
@@ -2256,7 +2385,7 @@
 	        if (targetId) {
 	          const e2 = `pg_cv_${tid}_${cid}_to_${targetId}`;
 	          if (cy.getElementById(e2).length === 0) {
-	            try { cy.add({ group:'edges', data:{ id: e2, source: nodeId, target: targetId, type: 'SC_GROUP', stepTechId: tid } }); } catch {}
+	            try { cy.add({ group:'edges', data:{ id: e2, source: nodeId, target: targetId, type: 'SC_GROUP', stepTechId: tid, stepTactic: st.tactic || '' } }); } catch {}
 	          }
 	        }
       }
@@ -2281,7 +2410,7 @@
       const y = placeY2(base.y + (i - (list.length-1)/2) * CVE_GAP_Y);
       const cvss = cvssSumFromRaw(cv);
       if (cy.getElementById(nodeId).length === 0) {
-        try { cy.add({ group:'nodes', data:{ id: nodeId, label:'CVE', group:'CVE', raw: cv, cvss: cvss }, position:{ x, y } }); } catch {}
+        try { cy.add({ group:'nodes', data:{ id: nodeId, label:'CVE', group:'CVE', raw: cv, cvss: cvss, techId: tid }, position:{ x, y } }); } catch {}
       }
       const eid = `pg_tc_${tid}_${cid}`;
       if (cy.getElementById(eid).length === 0) {
@@ -2295,9 +2424,9 @@
 	      else if (profileMono) targetId = 'pg_end';
 	      if (targetId) {
 	        const e2 = `pg_cv_${tid}_${cid}_to_${targetId}`;
-	        if (cy.getElementById(e2).length === 0) {
-	          try { cy.add({ group:'edges', data:{ id: e2, source: nodeId, target: targetId, type: 'SC_GROUP', stepTechId: tid } }); } catch {}
-	        }
+        if (cy.getElementById(e2).length === 0) {
+          try { cy.add({ group:'edges', data:{ id: e2, source: nodeId, target: targetId, type: 'SC_GROUP', stepTechId: tid, stepTactic: st.tactic || '' } }); } catch {}
+        }
 	      }
     }
     // Если показаны CVE — скрываем прямые связи только для этой тактики
@@ -2348,7 +2477,7 @@
     try { cy.edges("[type='SC_KEY_SWITCH']").remove(); } catch {}
     try { cy.edges("[type='SC_KEY_ARROW']").remove(); } catch {}
     if (showLinks) setGroupLinksVisible(true);
-    if (getProfile() === 'mono') primaryClosedKeyByTechnique = new Map();
+    if (getProfile() === 'mono') primaryClosedKeyByTactic = new Map();
   }
 
   function findNextTacticGroup(groupEle) {
@@ -2372,7 +2501,7 @@
     try { cy.edges("[type='SC_KEY_SEG']").remove(); } catch {}
     try { cy.edges("[type='SC_KEY_SWITCH']").remove(); } catch {}
     try { cy.edges("[type='SC_KEY_ARROW']").remove(); } catch {}
-    if (getProfile() === 'mono') primaryClosedKeyByTechnique = new Map();
+    if (getProfile() === 'mono') primaryClosedKeyByTactic = new Map();
     const groups = cy.nodes("[group = 'TacticGroup']");
     groups.forEach(g => addCVEsForGroup(g, true));
     setGroupLinksVisible(false);

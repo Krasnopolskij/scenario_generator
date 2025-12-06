@@ -147,7 +147,7 @@ def api_graph_subgraph(cpe: str, mode: str = "full", limit: int = 1000):
         labels = list(n.labels) if hasattr(n, "labels") else []
         props = dict(n)
         label = labels[0] if labels else "Node"
-        # Короткая подпись на узле (как просили): CPE, CVE, CWE, Tech, CAPEC
+        # Короткая подпись на узле: CPE, CVE, CWE, Tech, CAPEC
         short = {
             "CPE": "CPE",
             "CVE": "CVE",
