@@ -1,7 +1,8 @@
 from __future__ import annotations
 from typing import Any, Dict, List, Literal, Optional, Tuple
+from collections import defaultdict
 from py2neo import Graph
-from scenario_generation.metrics import enrich_cves_with_scores
+from scenario_generation.metrics import enrich_cves_with_scores_tactic
 
 # Максимум сценариев возвращаем из API
 MAX_SCENARIOS: int = 30
@@ -173,14 +174,11 @@ def generate_scenarios(
     use_gnn = mode == "gnn"
     evidence = _collect_evidence(graph, cpe_uri=cpe_uri, relaxed=relaxed, use_gnn=use_gnn)
 
-    # Добавляем epss_norm и damage к CVE в рамках каждой техники
-    for rec in evidence.values():
-        enrich_cves_with_scores(rec.get("cves") or [])
-
     # Группируем техники по тактикам
     buckets: List[Tuple[int, str, List[Dict[str, Any]]]] = []
     # temp map: (order, tactic) -> list
     tmp: Dict[Tuple[int, str], List[Dict[str, Any]]] = {}
+    tactic_cves: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
 
     # Тактики, которые исключаем из построения сценариев
     excluded_tactics_norm = {
@@ -196,15 +194,26 @@ def generate_scenarios(
         except Exception:
             return ""
 
+    # Сначала собираем CVE в разрезе тактик, исключая ненужные
+    for rec in evidence.values():
+        tech = rec.get("technique") or {}
+        props = tech.get("props", {})
+        primary_tactic = (props.get("primary_tactic") or "?")
+        if _norm(primary_tactic) in excluded_tactics_norm:
+            continue
+        tactic_cves[primary_tactic].extend(rec.get("cves") or [])
+
+    # Считаем метрики по полной группе CVE каждой тактики
+    for cves in tactic_cves.values():
+        enrich_cves_with_scores_tactic(cves)
+
     for tid, rec in evidence.items():
         tech = rec["technique"]
         props = tech.get("props", {})
         tactic_order = _ensure_order(props.get("tactic_order"))
         primary_tactic = (props.get("primary_tactic") or "?")
-        # Пропускаем техники из тактик Разведка / Подготовка ресурсов
         if _norm(primary_tactic) in excluded_tactics_norm:
             continue
-        # вес шага — сумма базовых CVSS среди всех связанных CVE
         weight = _sum_base_cvss_from_cves(rec["cves"]) if rec.get("cves") else 0.0
         step = {
             "tactic_order": tactic_order,
