@@ -99,6 +99,15 @@ option:disabled { color: #6c7390; }
 .status.ok { background: var(--ok); border-color: var(--ok); }
 
 .actions { display: flex; gap: 10px; }
+/* Строки кнопок на странице данных: тянем до ширины поля, сохраняем фиксированный gap, растягиваем последнюю кнопку */
+.page-data .actions {
+  width: 100%;
+  flex-wrap: nowrap;
+  align-items: stretch;
+}
+.page-data .actions > button { white-space: nowrap; }
+.page-data .actions > button:last-child { flex: 1 1 auto; }
+.page-data #refresh-epss-kev-btn { width: 100%; }
 button { cursor: pointer; border: 0; border-radius: 8px; padding: 8px 14px; font-weight: 600; color: white; background: var(--accent); }
 button[disabled] { opacity: 0.65; cursor: not-allowed; }
 #stop-btn { background: var(--error); }
