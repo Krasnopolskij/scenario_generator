@@ -646,12 +646,29 @@ def update_cisa_kev(graph: Graph):
     Использует CISA_KEV_URL из .env (или дефолтный URL). Безопасно к повторным запускам.
     """
     kev_url = os.getenv("CISA_KEV_URL", DEFAULT_CISA_KEV_URL)
-    try:
-        resp = requests.get(kev_url, timeout=20)
-        resp.raise_for_status()
-        data = resp.json()
-    except Exception as e:
-        print(f"[KEV] Ошибка загрузки KEV: {e}")
+    attempts = max(1, int(os.getenv("CISA_KEV_RETRIES", "3") or "3"))
+    verify_ssl_env = os.getenv("CISA_KEV_VERIFY_SSL", "true").strip().lower()
+    verify_ssl = verify_ssl_env not in {"0", "false", "no", "off"}
+    last_err = None
+    data = None
+    for i in range(attempts):
+        try:
+            resp = requests.get(
+                kev_url,
+                timeout=20,
+                verify=verify_ssl,
+                headers={"User-Agent": "scenario-generator/kev-refresh"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            break
+        except Exception as e:
+            last_err = e
+            wait = min(5, 1 + i)
+            print(f"[KEV] Попытка {i+1}/{attempts} не удалась: {e}. Повтор через {wait}с")
+            time.sleep(wait)
+    if data is None:
+        print(f"[KEV] Ошибка загрузки KEV после {attempts} попыток: {last_err}")
         return
 
     vulns = data.get("vulnerabilities") or []

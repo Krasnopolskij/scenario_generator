@@ -2,6 +2,7 @@
   const form = document.getElementById('run-form');
   const runBtn = document.getElementById('run-btn');
   const stopBtn = document.getElementById('stop-btn');
+  const refreshBtn = document.getElementById('refresh-epss-kev-btn');
   const gnnRunBtn = document.getElementById('gnn-run-btn');
   const gnnStopBtn = document.getElementById('gnn-stop-btn');
   const gnnClearBtn = document.getElementById('gnn-clear-btn');
@@ -11,7 +12,7 @@
 
   let abortController = null;
   let currentRunId = null;
-  let currentJobKind = null; // 'load' | 'gnn' | null
+  let currentJobKind = null; // 'load' | 'refresh' | 'gnn' | null
   // Запоминаем ключ последней зафиксированной строки прогресса, чтобы не дублировать финал
   let lastFinalKey = null;
   let inBar = false;
@@ -129,6 +130,7 @@
     } catch {}
     output.textContent = '';
     runBtn.disabled = true;
+    if (refreshBtn) refreshBtn.disabled = true;
     stopBtn.disabled = false;
     if (gnnRunBtn) gnnRunBtn.disabled = true;
     if (gnnStopBtn) gnnStopBtn.disabled = true;
@@ -171,6 +173,7 @@
       append(`\n[client error] ${err}\n`);
     } finally {
       runBtn.disabled = false;
+      if (refreshBtn) refreshBtn.disabled = false;
       stopBtn.disabled = true;
       if (gnnRunBtn) gnnRunBtn.disabled = false;
       if (gnnStopBtn) gnnStopBtn.disabled = true;
@@ -186,6 +189,14 @@
     if (currentRunId) return;
     runLoad();
   });
+
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (currentRunId) return;
+      runRefresh();
+    });
+  }
 
   // Взаимоисключающие чекбоксы ONLY/SKIP
   form.querySelectorAll('input[name="only"], input[name="skip"]').forEach(cb => {
@@ -235,11 +246,12 @@
     if (!currentRunId) {
       if (abortController) abortController.abort();
       runBtn.disabled = false;
+      if (refreshBtn) refreshBtn.disabled = false;
       stopBtn.disabled = true;
       abortController = null;
       return;
     }
-    if (currentJobKind !== 'load') {
+    if (currentJobKind !== 'load' && currentJobKind !== 'refresh') {
       return;
     }
     try {
@@ -255,6 +267,7 @@
     } finally {
       if (abortController) abortController.abort();
       runBtn.disabled = false;
+      if (refreshBtn) refreshBtn.disabled = false;
       stopBtn.disabled = true;
       if (gnnRunBtn) gnnRunBtn.disabled = false;
       if (gnnStopBtn) gnnStopBtn.disabled = true;
@@ -273,6 +286,76 @@
     updateDisable();
     try { localStorage.removeItem(LS_KEY); } catch (e) { console.warn('ls clear filters', e); }
   });
+
+  async function runRefresh() {
+    if (currentRunId) return;
+
+    const payload = {};
+    currentRunId = `${Date.now()}-${Math.random().toString(16).slice(2,8)}`;
+    currentJobKind = 'refresh';
+    payload.run_id = currentRunId;
+    try {
+      const rect = output.getBoundingClientRect();
+      const px = rect.width || window.innerWidth || 800;
+      const cols = Math.max(60, Math.floor(px / 8));
+      payload.columns = cols;
+    } catch {}
+
+    output.textContent = '';
+    runBtn.disabled = true;
+    if (refreshBtn) refreshBtn.disabled = true;
+    stopBtn.disabled = false;
+    if (gnnRunBtn) gnnRunBtn.disabled = true;
+    if (gnnStopBtn) gnnStopBtn.disabled = true;
+    if (gnnClearBtn) gnnClearBtn.disabled = true;
+    abortController = new AbortController();
+
+    try {
+      const resp = await fetch('/run/refresh_epss_kev', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: abortController.signal,
+      });
+
+      if (!resp.ok) {
+        let msg = `${resp.status} ${resp.statusText}`;
+        try {
+          const data = await resp.json();
+          if (data && data.error) msg = `${msg} — ${data.error}`;
+        } catch {}
+        append(`Ошибка запуска обновления: ${msg}\n`);
+        return;
+      }
+      if (!resp.body) {
+        append(`Ошибка запуска обновления: пустой ответ сервера\n`);
+        return;
+      }
+
+      const hdrId = resp.headers.get('x-run-id');
+      if (hdrId) currentRunId = hdrId;
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder('utf-8');
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        append(decoder.decode(value, { stream: true }));
+      }
+    } catch (err) {
+      append(`\n[client error refresh] ${err}\n`);
+    } finally {
+      runBtn.disabled = false;
+      if (refreshBtn) refreshBtn.disabled = false;
+      stopBtn.disabled = true;
+      if (gnnRunBtn) gnnRunBtn.disabled = false;
+      if (gnnStopBtn) gnnStopBtn.disabled = true;
+      if (gnnClearBtn) gnnClearBtn.disabled = false;
+      abortController = null;
+      currentRunId = null;
+      currentJobKind = null;
+    }
+  }
 
   async function runGnn() {
     if (currentRunId) return;
@@ -293,6 +376,7 @@
     if (gnnStopBtn) gnnStopBtn.disabled = false;
     if (gnnClearBtn) gnnClearBtn.disabled = true;
     runBtn.disabled = true;
+    if (refreshBtn) refreshBtn.disabled = true;
     stopBtn.disabled = true;
     abortController = new AbortController();
 
@@ -335,6 +419,7 @@
       if (gnnStopBtn) gnnStopBtn.disabled = true;
       if (gnnClearBtn) gnnClearBtn.disabled = false;
       runBtn.disabled = false;
+      if (refreshBtn) refreshBtn.disabled = false;
       stopBtn.disabled = true;
       abortController = null;
       currentRunId = null;
@@ -371,6 +456,7 @@
         if (gnnStopBtn) gnnStopBtn.disabled = true;
         if (gnnClearBtn) gnnClearBtn.disabled = false;
         runBtn.disabled = false;
+        if (refreshBtn) refreshBtn.disabled = false;
         stopBtn.disabled = true;
         abortController = null;
         currentRunId = null;

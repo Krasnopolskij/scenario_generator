@@ -236,6 +236,10 @@ def build_load_command(only: Optional[List[str]], skip: Optional[List[str]], cve
     return cmd
 
 
+def build_refresh_command() -> List[str]:
+    return [sys.executable, "-u", str(ROOT / "data_collection" / "refresh_epss_kev.py")]
+
+
 def build_gnn_command(
     epochs: Optional[int] = None,
     top_k: Optional[int] = None,
@@ -430,6 +434,39 @@ async def run_loader(request: Request):
         if isinstance(check_hash, bool):
             extra_env["NVD_CHECK_HASH"] = "true" if check_hash else "false"
         for chunk in stream_process(cmd, run_id, tty_columns=tty_columns, tty_rows=tty_rows, extra_env=extra_env or None):
+            yield chunk
+
+    return StreamingResponse(
+        generator(),
+        media_type="text/plain; charset=utf-8",
+        headers={"X-Run-Id": run_id},
+    )
+
+
+@app.post("/run/refresh_epss_kev")
+async def run_refresh_epss_kev(request: Request):
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    tty_columns = payload.get("columns")
+    tty_rows = payload.get("rows")
+    run_id = payload.get("run_id")
+
+    if not isinstance(run_id, str) or not run_id:
+        run_id = str(int(time.time() * 1000))
+    with RUNS_LOCK:
+        if run_id in RUNS and RUNS[run_id].poll() is None:
+            return JSONResponse(
+                {"error": "Уже есть активный процесс с таким run_id", "run_id": run_id},
+                status_code=409,
+            )
+
+    cmd = build_refresh_command()
+
+    def generator():
+        yield f"$ {' '.join(cmd)}\n[run_id: {run_id}]\n\n"
+        for chunk in stream_process(cmd, run_id, tty_columns=tty_columns, tty_rows=tty_rows, extra_env=None):
             yield chunk
 
     return StreamingResponse(

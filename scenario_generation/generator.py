@@ -14,6 +14,7 @@ EXCLUDED_TACTICS = {
     "resource-development",
     "discovery",
     "command-and-control",
+    "collection"
 }
 
 
