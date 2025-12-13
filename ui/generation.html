@@ -51,6 +51,7 @@
     <h1>Генерация сценариев</h1>
     <nav class="nav">
       <button id="open-export" type="button" class="btn-secondary" title="Экспорт графа" aria-label="Экспорт графа">Экспорт</button>
+      <button id="open-landscape" type="button" class="btn-secondary" title="3D ландшафт первичного сценария" aria-label="3D ландшафт">3D ландшафт</button>
       <button id="profile-toggle" type="button" class="btn-secondary" title="Профиль визуализации" aria-label="Профиль визуализации">Профиль</button>
       <button id="open-theme" type="button" class="btn-secondary" title="Настройки отображения" aria-label="Настройки">⚙ Настройки</button>
       <button id="theme-toggle" type="button" class="btn-secondary" title="Светлая тема" aria-label="Светлая тема">☀</button>
@@ -102,7 +103,7 @@
             <label for="view-mode">Режим отображения сценариев:</label>
             <select id="view-mode">
               <option value="linear" selected>Подсценарии</option>
-              <option value="primary">Первичный сценарий</option>
+              <option value="primary">Общий сценарий</option>
             </select>
           </div>
           <div class="field">
@@ -220,6 +221,37 @@
     </div>
   </div>
 
+  <!-- Модальное окно 3D-ландшафта -->
+  <div id="landscape-backdrop" class="modal-backdrop" hidden>
+    <div class="modal modal-landscape">
+      <div class="modal-title">3D-ландшафт сценария</div>
+      <div class="modal-body">
+        <div class="landscape-toolbar">
+          <label for="landscape-metric">Метрика:</label>
+          <select id="landscape-metric">
+            <option value="epss_norm" selected>Вероятность</option>
+            <option value="damage">Ущерб</option>
+            <option value="risk">Риск</option>
+          </select>
+          <label for="landscape-show-tactics">
+            <input type="checkbox" id="landscape-show-tactics" checked />
+            Подписи тактик
+          </label>
+          <label for="landscape-mono">
+            <input type="checkbox" id="landscape-mono" />
+            Ч/Б режим
+          </label>
+          <button id="landscape-export" type="button" class="btn-secondary" title="Экспорт в PNG">Экспорт PNG</button>
+          <span class="landscape-hint">Топ-20 CVE по выбранной метрике. Оси: X — CVE, Y — тактики</span>
+          <span style="flex:1"></span>
+          <button id="landscape-close" type="button" class="btn-secondary">Закрыть</button>
+        </div>
+        <div id="landscape-notice" class="landscape-notice" hidden></div>
+        <div id="landscape-plot" class="landscape-plot" role="img" aria-label="3D ландшафт"></div>
+      </div>
+    </div>
+  </div>
+
   <footer>
     <span></span>
   </footer>
@@ -228,8 +260,10 @@
   <script src="/static/js/vendor/cytoscape.js-3.33.1/dist/cytoscape.min.js"></script>
   <!-- Плагин экспорта SVG (локально) -->
   <script src="/static/js/vendor/cytoscape-svg/cytoscape-svg.js"></script>
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
   <script src="/static/js/theme.js?v=20251030" defer></script>
   <script src="/static/js/tooltip.js?v=20251111" defer></script>
-  <script src="/static/js/graph.js?v=20251108-profiles"></script>
+  <script src="/static/js/landscape.js?v=20251115"></script>
+  <script src="/static/js/graph.js?v=20251115-landscape"></script>
 </body>
 </html>

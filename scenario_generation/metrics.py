@@ -1,7 +1,7 @@
 from __future__ import annotations
-
 from typing import Any, Dict, List, Tuple
 
+EPSS_EFF_TRESHHOLD = 10e-3
 
 def _safe_float(value: Any) -> float:
     try:
@@ -42,14 +42,14 @@ def _calc_epss_norm(cves: List[Dict[str, Any]]) -> List[float]:
     return [p / total for p in p_values]
 
 
-def _calc_damage(cves: List[Dict[str, Any]]) -> List[float]:
-    # Считает damage по формуле cvss/epss с нормировкой на максимум
-    ratios, max_ratio = _calc_ratios(cves)
-    if not ratios:
-        return []
-    if max_ratio <= 0:
-        return [0.0 for _ in ratios]
-    return [r / max_ratio for r in ratios]
+# def _calc_damage(cves: List[Dict[str, Any]]) -> List[float]:
+#     # Считает damage по формуле cvss/epss с нормировкой на максимум
+#     ratios, max_ratio = _calc_ratios(cves)
+#     if not ratios:
+#         return []
+#     if max_ratio <= 0:
+#         return [0.0 for _ in ratios]
+#     return [r / max_ratio for r in ratios]
 
 
 def _cve_key(cv: Dict[str, Any]) -> str:
@@ -81,10 +81,12 @@ def _calc_ratios(cves: List[Dict[str, Any]]) -> Tuple[List[float], float]:
         props = (cv or {}).get("props") or {}
         epss = _safe_float(props.get("epss"))
         base_cvss = _safe_float(props.get("cvss"))
-        if epss <= 0:
-            ratios.append(0.0)
-            continue
-        ratios.append(base_cvss / epss)
+
+        epss_eff = max(epss, EPSS_EFF_TRESHHOLD)
+        # if epss <= 0:
+        #     ratios.append(0.0)
+        #     continue
+        ratios.append(base_cvss / epss_eff)
 
     max_ratio = max(ratios) if ratios else 0.0
     return ratios, max_ratio
@@ -183,8 +185,9 @@ def compute_scenario_risk(
         ratio = _safe_float(props.get("cvss_epss_ratio"))
         if ratio <= 0:
             epss = _safe_float(props.get("epss"))
+            epss_eff = max(epss, EPSS_EFF_TRESHHOLD)
             cvss = _safe_float(props.get("cvss"))
-            ratio = (cvss / epss) if epss > 0 else 0.0
+            ratio = (cvss / epss_eff) #if epss > 0 else 0.0
         ratio_sum += ratio
 
     impact = (ratio_sum / denom) if denom and denom > 0 else 0.0

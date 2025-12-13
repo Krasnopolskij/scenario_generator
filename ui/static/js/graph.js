@@ -32,6 +32,16 @@
   const exportJsonBtn = document.getElementById('export-json');
   const exportCloseBtn = document.getElementById('export-close');
   const exportTransparent = document.getElementById('export-transparent');
+  // 3D ландшафт
+  const landscapeBtn = document.getElementById('open-landscape');
+  const landscapeBackdrop = document.getElementById('landscape-backdrop');
+  const landscapeMetricSel = document.getElementById('landscape-metric');
+  const landscapeExportBtn = document.getElementById('landscape-export');
+  const landscapeCloseBtn = document.getElementById('landscape-close');
+  const landscapePlot = document.getElementById('landscape-plot');
+  const landscapeNotice = document.getElementById('landscape-notice');
+  const landscapeMono = document.getElementById('landscape-mono');
+  const landscapeShowTactics = document.getElementById('landscape-show-tactics');
   const themeCanvasInput = document.getElementById('theme-canvas');
   const themeLabelInput = document.getElementById('theme-label');
   const themeNodeInputs = {
@@ -62,6 +72,7 @@
   const scenarioShowBtns = new Map();
   let currentScenarioData = null; // выбранный сценарий для повторной перерисовки
   let lastMega = null; // mega для первичного сценария
+  let landscape = null; // контроллер 3D ландшафта
   // Состояние ключей в сценариях
   let linearClosedKeyByTactic = new Map();
   let primaryClosedKeyByTactic = new Map();
@@ -119,6 +130,65 @@
   };
   const labelColorFromCss = () => cssVar('--text', '#e5e7ef');
   const mutedColorFromCss = () => cssVar('--muted', '#9aa0b4');
+  const gridColorFromCss = () => cssVar('--line-soft', '#1e2748');
+
+  function initLandscapeController() {
+    if (!window.SGLandscape || landscape) return;
+    landscape = window.SGLandscape.create({
+      backdrop: landscapeBackdrop,
+      plotEl: landscapePlot,
+      metricSelect: landscapeMetricSel,
+      exportBtn: landscapeExportBtn,
+      closeBtn: landscapeCloseBtn,
+      noticeEl: landscapeNotice,
+      translateTactic: translateTacticName,
+      getColors: () => ({
+        paper: cssVar('--panel', '#0f1326'),
+        canvas: cssVar('--bg', '#0b1023'),
+        grid: gridColorFromCss(),
+        hoverBg: cssVar('--panel', 'rgba(15,19,38,0.94)'),
+        hoverText: cssVar('--text', '#e5e7ef'),
+      }),
+      buildFileName: buildLandscapeFileName,
+      getMonoFlag: () => (landscapeMono && !landscapeMono.disabled ? !!landscapeMono.checked : false),
+      getShowTactics: () => (landscapeShowTactics ? !!landscapeShowTactics.checked : true),
+    });
+    if (landscapeBtn) {
+      landscapeBtn.addEventListener('click', () => {
+        if (Array.isArray(lastMega) && lastMega.length > 0) {
+          landscape.setData(lastMega);
+          landscape.open();
+        } else {
+          landscape.showEmpty();
+        }
+      });
+    }
+    if (landscapeMono) {
+      const applyMonoAvailability = () => {
+        const mode = getUiThemeMode();
+        const isDark = mode === 'dark';
+        if (isDark) {
+          landscapeMono.checked = false;
+          landscapeMono.disabled = true;
+          landscapeMono.title = 'Ч/Б режим недоступен в тёмной теме';
+        } else {
+          landscapeMono.disabled = false;
+          landscapeMono.title = 'Переключить палитру в Ч/Б';
+        }
+      };
+      applyMonoAvailability();
+      document.addEventListener('sg:theme-change', applyMonoAvailability);
+      landscapeMono.addEventListener('change', () => { if (landscape) landscape.render && landscape.render(); });
+    }
+    if (landscapeShowTactics) {
+      landscapeShowTactics.addEventListener('change', () => { if (landscape) landscape.render && landscape.render(); });
+    }
+  }
+
+  function syncLandscapeData(mega) {
+    lastMega = Array.isArray(mega) ? mega : [];
+    if (landscape) landscape.setData(lastMega);
+  }
 
   // профили и вспомогательные функции для Ч/Б
   function getUiThemeMode() {
@@ -847,6 +917,15 @@
     const ts = nowTimestampStr();
     return `${prefix}_${vendor}_${product}_${version}_${ts}.${ext}`;
   }
+  function buildLandscapeFileName() {
+    const norm = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    const { vendor, product, version } = parseCpeParts(cpeInput && cpeInput.value);
+    const prefix = inferPrefix();
+    let base = `${prefix}_${vendor}_${product}_${version}`;
+    base = base.replace(/_+/g, '_').replace(/^_+|_+$/g, '');
+    if (!base) base = 'landscape';
+    return `${base}_landscape.png`;
+  }
   function handleExportPng() {
     if (!cy) { alert('Граф ещё не построен'); return; }
     const transparent = !!(exportTransparent && exportTransparent.checked);
@@ -1471,10 +1550,12 @@
       return;
     }
     if (viewMode === 'primary') {
+      syncLandscapeData(data && data.mega);
       renderPrimaryCard(data);
     } else {
       // По умолчанию для линейного режима — галочка включена
       try { if (showAllCves) showAllCves.checked = true; } catch {}
+      syncLandscapeData(data && data.mega);
       renderScenarios(data);
     }
   }
@@ -2130,6 +2211,8 @@
   bindProfileUI();
   // Интерфейс экспорта (PNG/SVG/JSON)
   bindExportUI();
+  // Интерфейс 3D ландшафта
+  initLandscapeController();
 
   // Реакция на смену темы UI, обновляем цвета надписей, если они не переопределены темой графа
   document.addEventListener('sg:theme-change', () => {
@@ -2172,6 +2255,7 @@
         currentScenarioId = null;
         currentScenarioData = null;
       }
+      syncLandscapeData([]);
       // Чистим кэш сценариев в LS чтобы не переполнять
       try { localStorage.removeItem(LS_SCEN); } catch {}
     });
@@ -2221,14 +2305,14 @@
     const frag = document.createDocumentFragment();
     const box = document.createElement('div'); box.className = 'scenario primary';
     const head = document.createElement('div'); head.className = 'scenario-head';
-    const title = document.createElement('div'); title.className = 'scenario-title'; title.textContent = 'Первичный сценарий';
+    const title = document.createElement('div'); title.className = 'scenario-title'; title.textContent = 'Общий сценарий';
     const act = document.createElement('div'); act.className = 'scenario-actions';
     const btnShow = document.createElement('button'); btnShow.textContent = 'Отобразить';
     // фиксированная ширина, чтобы текст не менял размер
     try { btnShow.style.width = '220px'; } catch {}
     const mega = Array.isArray(data.mega) ? data.mega : [];
     buildPrimaryStepIndex(mega);
-    lastMega = mega;
+    syncLandscapeData(mega);
     const setBtn = (sel) => { btnShow.textContent = sel ? 'Назад к графу' : 'Отобразить'; btnShow.classList.toggle('selected', !!sel); };
     btnShow.addEventListener('click', () => {
       if (!isScenarioView) {

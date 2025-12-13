@@ -283,6 +283,33 @@ button.selected { background: var(--ok); }
 .modal-body { color: var(--muted); margin-bottom: 14px; }
 .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
 
+.modal.modal-landscape { width: min(1400px, 90vw); max-width: 1400px; }
+.landscape-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.landscape-toolbar label { margin: 0; color: var(--text); }
+.landscape-toolbar select { min-width: 200px; }
+.landscape-toolbar .landscape-hint { color: var(--muted); font-size: 12px; }
+.landscape-plot {
+  width: 100%;
+  height: calc(100vh - 280px);
+  max-height: 820px;
+  background: var(--panel);
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  margin: 0;
+}
+.landscape-notice { padding: 12px; border: 1px solid var(--line-soft); border-radius: 8px; background: var(--surface-soft); color: var(--text); margin-bottom: 10px; }
+@media (min-height: 1000px) {
+  .landscape-plot { height: calc(100vh - 240px); }
+}
+@media (max-width: 1024px) {
+  .modal.modal-landscape { width: min(96vw, 1024px); }
+  .landscape-plot { height: calc(100vh - 260px); max-height: 620px; }
+}
+@media (max-width: 640px) {
+  .landscape-plot { height: calc(100vh - 240px); max-height: 520px; }
+  .landscape-toolbar { flex-direction: column; align-items: flex-start; }
+}
+
 .input-wrap input[type="number"],
 .input-wrap input[type="text"],
 .input-wrap select {
