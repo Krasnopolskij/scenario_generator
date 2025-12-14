@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Any, Dict, List, Tuple
 
-EPSS_EFF_TRESHHOLD = 10e-3
+EPSS_EFF_TRESHHOLD = 1e-3
 
 def _safe_float(value: Any) -> float:
     try:
