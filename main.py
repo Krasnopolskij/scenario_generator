@@ -5,15 +5,25 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, UploadFile, File
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse, Response, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from py2neo import Graph
 from dotenv import load_dotenv
 from cpe import search as cpe_search
 from scenario_generation.generator import generate_scenarios
+from targets import (
+    build_target_uri,
+    check_cves_in_db,
+    collect_cves,
+    ensure_target_constraints,
+    parse_cves_from_xml_bytes,
+    resolve_name,
+    target_exists,
+    upsert_target,
+)
 import datetime as dt
 
 ROOT = Path(__file__).parent.resolve()
@@ -48,6 +58,12 @@ def graph_page() -> FileResponse:
     return FileResponse(str(page))
 
 
+@app.get("/targets")
+def targets_page() -> FileResponse:
+    page = ui_dir / "targets.html"
+    return FileResponse(str(page))
+
+
 ALLOWED_LOADERS = {"techniques", "capec", "cwe", "cve"}
 
 # Регистрация запущенных процессов: run_id -> Popen
@@ -71,28 +87,40 @@ def get_graph() -> Graph:
     return _GRAPH
 
 
+def normalize_object_uri(raw: str) -> Tuple[str, bool]:
+    s = (raw or "").strip()
+    low = s.lower()
+    idx_custom = low.find("custom:")
+    if idx_custom != -1:
+        s = s[idx_custom:]
+        return s, True
+    idx = low.find("cpe:2.3")
+    if idx != -1:
+        s = s[idx:]
+    return s, False
+
+
 @app.get("/api/graph/subgraph")
 def api_graph_subgraph(cpe: str, mode: str = "full", limit: int = 1000):
     g = get_graph()
     limit = max(1, min(int(limit or 1000), 5000))
 
-    # Нормализация входа: иногда прилетает строка вида "cpe23Uri: cpe:2.3:..."
-    cpe_in = (cpe or "").strip()
-    idx = cpe_in.find("cpe:2.3")
-    if idx != -1:
-        cpe_in = cpe_in[idx:]
+    # Нормализация входа
+    cpe_in, is_target = normalize_object_uri(cpe)
+    node_label = "Target" if is_target else "CPE"
+    node_prop = "targetUri" if is_target else "cpe23Uri"
 
     if mode == "simple":
         cypher = (
-            "MATCH p=(v:CVE)-[:AFFECTS]->(cpe:CPE {cpe23Uri:$cpe}) "
+            f"MATCH p=(v:CVE)-[:AFFECTS]->(obj:{node_label} {{{node_prop}:$cpe}}) "
             "RETURN p LIMIT $limit"
         )
         params = {"cpe": cpe_in, "limit": limit}
     elif mode == "full_relaxed":
         # Полный нестрогий: допускаем 0..1 шаг CAPEC_PARENT_TO_CAPEC_CHILD
         cypher = (
-            "MATCH (cpe:CPE {cpe23Uri: $cpe}) "
-            "MATCH p1 = (v:CVE)-[:AFFECTS]->(cpe) "
+            f"MATCH (obj:{node_label} {{{node_prop}: $cpe}}) "
+            "MATCH p1 = (v:CVE)-[:AFFECTS]->(obj) "
             "OPTIONAL MATCH p2 = (w:CWE)-[:CWE_TO_CVE]->(v) "
             "OPTIONAL MATCH p3 = (cap_cwe:CAPEC)-[:CAPEC_TO_CWE]->(w) "
             "OPTIONAL MATCH p4 = (w)<-[:CAPEC_TO_CWE]-(cap_cwe2:CAPEC) "
@@ -107,8 +135,8 @@ def api_graph_subgraph(cpe: str, mode: str = "full", limit: int = 1000):
     elif mode == "full_gnn":
         # Полный строгий + предсказанные связи CAPEC_TO_TECHNIQUE_PRED
         cypher = (
-            "MATCH (cpe:CPE {cpe23Uri: $cpe}) "
-            "MATCH p1=(v:CVE)-[:AFFECTS]->(cpe) "
+            f"MATCH (obj:{node_label} {{{node_prop}: $cpe}}) "
+            "MATCH p1=(v:CVE)-[:AFFECTS]->(obj) "
             "OPTIONAL MATCH p2=(w:CWE)-[:CWE_TO_CVE]->(v) "
             "OPTIONAL MATCH p3=(cap:CAPEC)-[:CAPEC_TO_CWE]->(w) "
             "OPTIONAL MATCH p4=(cap)-[:CAPEC_TO_TECHNIQUE]->(t:Technique) "
@@ -120,8 +148,8 @@ def api_graph_subgraph(cpe: str, mode: str = "full", limit: int = 1000):
         params = {"cpe": cpe_in, "limit": limit}
     else:
         cypher = (
-            "MATCH (cpe:CPE {cpe23Uri: $cpe}) "
-            "MATCH p1=(v:CVE)-[:AFFECTS]->(cpe) "
+            f"MATCH (obj:{node_label} {{{node_prop}: $cpe}}) "
+            "MATCH p1=(v:CVE)-[:AFFECTS]->(obj) "
             "OPTIONAL MATCH p2=(w:CWE)-[:CWE_TO_CVE]->(v) "
             "OPTIONAL MATCH p3=(cap:CAPEC)-[:CAPEC_TO_CWE]->(w) "
             "OPTIONAL MATCH p4=(cap)-[:CAPEC_TO_TECHNIQUE]->(t:Technique) "
@@ -147,9 +175,10 @@ def api_graph_subgraph(cpe: str, mode: str = "full", limit: int = 1000):
         labels = list(n.labels) if hasattr(n, "labels") else []
         props = dict(n)
         label = labels[0] if labels else "Node"
-        # Короткая подпись на узле: CPE, CVE, CWE, Tech, CAPEC
+        # Короткая подпись на узле: CPE, Target, CVE, CWE, Tech, CAPEC
         short = {
             "CPE": "CPE",
+            "Target": "Target",
             "CVE": "CVE",
             "CWE": "CWE",
             "Technique": "Tech",
@@ -193,8 +222,8 @@ def api_graph_subgraph(cpe: str, mode: str = "full", limit: int = 1000):
     # Для режима full_gnn дополнительно добавляем предсказанные связи CAPEC_TO_TECHNIQUE_PRED
     if mode == "full_gnn":
         pred_cypher = (
-            "MATCH (cpe:CPE {cpe23Uri: $cpe}) "
-            "MATCH (cve:CVE)-[:AFFECTS]->(cpe) "
+            f"MATCH (obj:{node_label} {{{node_prop}: $cpe}}) "
+            "MATCH (cve:CVE)-[:AFFECTS]->(obj) "
             "MATCH (w:CWE)-[:CWE_TO_CVE]->(cve) "
             "MATCH (cap:CAPEC)-[:CAPEC_TO_CWE]->(w) "
             "MATCH (cap)-[r:CAPEC_TO_TECHNIQUE_PRED]->(t:Technique) "
@@ -638,15 +667,182 @@ def api_cpe_search(part: str, vendor: str = "", product: str = "", version: str 
     return {"items": items}
 
 
+# API для Target
+@app.post("/api/targets/parse")
+async def api_targets_parse(file: UploadFile = File(...)):
+    data = await file.read()
+    cves = parse_cves_from_xml_bytes(data)
+    if not cves:
+        return JSONResponse({"error": "Не удалось найти CVE в файле"}, status_code=400)
+    return {"items": cves, "total": len(cves)}
+
+
+@app.post("/api/targets/check")
+async def api_targets_check(request: Request):
+    g = get_graph()
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    name = payload.get("name") or ""
+    cves_text = payload.get("cves_text") or ""
+    file_cves = payload.get("file_cves") or []
+    if not isinstance(file_cves, list):
+        file_cves = []
+
+    cves, err = collect_cves(cves_text, file_cves)
+    if err:
+        return JSONResponse({"error": err}, status_code=400)
+    try:
+        resolved_name, generated = resolve_name(name, cves)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+    target_uri = build_target_uri(resolved_name)
+    ensure_target_constraints(g)
+    exists = target_exists(g, target_uri)
+
+    found_ids = check_cves_in_db(g, cves)
+    missing = max(0, len(cves) - len(found_ids))
+
+    return {
+        "name": resolved_name,
+        "target_uri": target_uri,
+        "generated_name": generated,
+        "total": len(cves),
+        "found": len(found_ids),
+        "missing": missing,
+        "exists": exists,
+    }
+
+
+@app.post("/api/targets/create")
+async def api_targets_create(request: Request):
+    g = get_graph()
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    name = payload.get("name") or ""
+    cves_text = payload.get("cves_text") or ""
+    file_cves = payload.get("file_cves") or []
+    if not isinstance(file_cves, list):
+        file_cves = []
+
+    cves, err = collect_cves(cves_text, file_cves)
+    if err:
+        return JSONResponse({"error": err}, status_code=400)
+    try:
+        resolved_name, generated = resolve_name(name, cves)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+    target_uri = build_target_uri(resolved_name)
+    ensure_target_constraints(g)
+
+    found_ids = check_cves_in_db(g, cves)
+    if not found_ids:
+        return JSONResponse({"error": "В базе не найдено ни одной CVE"}, status_code=400)
+    missing = max(0, len(cves) - len(found_ids))
+
+    res = upsert_target(
+        g,
+        name=resolved_name,
+        target_uri=target_uri,
+        input_total=len(cves),
+        found_count=len(found_ids),
+        missing_count=missing,
+        found_ids=found_ids,
+    )
+
+    return {
+        "name": resolved_name,
+        "target_uri": target_uri,
+        "generated_name": generated,
+        "total": len(cves),
+        "found": len(found_ids),
+        "missing": missing,
+        "created": bool(res.get("created")),
+        "updated": bool(res.get("updated")),
+    }
+
+
+@app.get("/api/targets/search")
+def api_targets_search(q: str = "", limit: int = 50, offset: int = 0):
+    g = get_graph()
+    limit = min(max(int(limit or 50), 1), 200)
+    offset = max(0, int(offset or 0))
+    q = (q or "").strip()
+    rows = g.run(
+        """
+        MATCH (t:Target)
+        WHERE $q = '' OR toLower(t.name) CONTAINS toLower($q)
+        RETURN
+          t.name AS name,
+          t.targetUri AS target_uri,
+          coalesce(t.input_total, 0) AS input_total,
+          coalesce(t.found_count, 0) AS found_count,
+          coalesce(t.missing_count, 0) AS missing_count
+        ORDER BY t.name
+        SKIP $offset LIMIT $limit
+        """,
+        q=q,
+        offset=offset,
+        limit=limit,
+    )
+    return {"items": rows.data()}
+
+
+@app.post("/api/targets/cleanup")
+async def api_targets_cleanup(request: Request):
+    g = get_graph()
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    mode = (payload.get("mode") or "").strip().lower()
+    days = payload.get("days")
+
+    if mode == "all":
+        rows = g.run(
+            """
+            MATCH (t:Target)
+            WITH collect(t) AS items, count(t) AS c
+            FOREACH (x IN items | DETACH DELETE x)
+            RETURN c AS deleted
+            """
+        ).data()
+    elif mode == "older_than":
+        try:
+            days = int(days)
+        except Exception:
+            days = 10
+        if days < 1:
+            days = 1
+        cutoff = int(time.time()) - days * 86400
+        rows = g.run(
+            """
+            MATCH (t:Target)
+            WHERE coalesce(t.updated_ts, t.created_ts, 0) < $cutoff
+            WITH collect(t) AS items, count(t) AS c
+            FOREACH (x IN items | DETACH DELETE x)
+            RETURN c AS deleted
+            """,
+            cutoff=cutoff,
+        ).data()
+    else:
+        return JSONResponse({"error": "Некорректный режим очистки"}, status_code=400)
+
+    deleted = (rows or [{}])[0].get("deleted") or 0
+    return {"deleted": int(deleted)}
+
+
 # Scenarios API
 @app.get("/api/scenarios")
 def api_scenarios(cpe: str, mode: str = "strict", max_per_tactic: int = 3):
     g = get_graph()
-    # Нормализуем вход (как в /api/graph/subgraph)
-    cpe_in = (cpe or "").strip()
-    idx = cpe_in.find("cpe:2.3")
-    if idx != -1:
-        cpe_in = cpe_in[idx:]
+    # Нормализуем вход
+    cpe_in, _ = normalize_object_uri(cpe)
 
     m = (mode or "strict").strip().lower()
     if m not in ("strict", "relaxed", "gnn"):
@@ -671,10 +867,7 @@ def api_export(cpe: str, mode: str = "strict", max_per_tactic: int = 3):
     """
     g = get_graph()
     # Нормализуем вход
-    cpe_in = (cpe or "").strip()
-    idx = cpe_in.find("cpe:2.3")
-    if idx != -1:
-        cpe_in = cpe_in[idx:]
+    cpe_in, is_target = normalize_object_uri(cpe)
 
     m = (mode or "strict").strip().lower()
     if m not in ("strict", "relaxed", "gnn"):
@@ -734,15 +927,26 @@ def api_export(cpe: str, mode: str = "strict", max_per_tactic: int = 3):
 
     # Заголовок и метаданные (локальное время с часовым поясом)
     now_iso = dt.datetime.now().astimezone().replace(microsecond=0).isoformat()
-    payload = {
-        "schema": "scenario-export",
-        "schema_version": 1,
-        "metadata": {
+    if is_target:
+        meta = {
+            "cpe": "none",
+            "target": cpe_in,
+            "date_created": now_iso,
+            "mode": m,
+            "max_per_tactic": mpt,
+        }
+    else:
+        meta = {
             "cpe": cpe_in,
             "date_created": now_iso,
             "mode": m,
             "max_per_tactic": mpt,
-        },
+        }
+
+    payload = {
+        "schema": "scenario-export",
+        "schema_version": 1,
+        "metadata": meta,
         "primary": primary,
     }
 
@@ -776,9 +980,14 @@ def api_export(cpe: str, mode: str = "strict", max_per_tactic: int = 3):
         except Exception:
             return 'vendor', 'product', 'none'
 
-    v, p, ver = _parse_cpe_parts(cpe_in)
     ts = dt.datetime.now().astimezone()
-    fname = f"{v}_{p}_{ver}_{ts.strftime('%d%m%Y_%H%M%S')}.json"
+    if is_target:
+        name = cpe_in.replace("custom:", "", 1)
+        safe = _safe_part(name)
+        fname = f"target_{safe}_{ts.strftime('%d%m%Y_%H%M%S')}.json"
+    else:
+        v, p, ver = _parse_cpe_parts(cpe_in)
+        fname = f"{v}_{p}_{ver}_{ts.strftime('%d%m%Y_%H%M%S')}.json"
 
     return Response(
         content=body,

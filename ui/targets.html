@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ручной ввод / Интеграции</title>
+  <script>
+    (function () {
+      try {
+        var mode = localStorage.getItem('sg:ui:mode');
+        if (mode === 'light') {
+          document.documentElement.classList.add('light-theme');
+        }
+      } catch (e) {}
+    })();
+  </script>
+  <style>
+    html.light-theme {
+      --bg: #e9edf2;
+      --panel: #eef1f4;
+      --panel-elev: #fafbfc;
+      --text: #111827;
+      --muted: #475467;
+      --accent: #3b6eea;
+      --ok: #2a9d4b;
+      --warn: #b98900;
+      --error: #d23b3b;
+      --surface-soft: #f2f4f7;
+      --surface-muted: #e7ebf0;
+      --line: #c7cfdb;
+      --line-soft: #c0c8d6;
+      --bg-start: #e7ebf0;
+      --header-bg: var(--panel);
+      --nav-active-bg: #e7ebf0;
+      --nav-hover-bg: #e7ebf0;
+      --nav-active-border: var(--line);
+    }
+    #theme-toggle { font-size: 0; line-height: 0; }
+    #theme-toggle::before { content: '☀'; font-size: 16px; line-height: 1; }
+    html.light-theme #theme-toggle::before { content: '🌙'; }
+  </style>
+  <link rel="stylesheet" href="/static/css/style.css?v=20251130-targets" />
+  <link rel="stylesheet" href="/static/css/light-theme.css?v=20251029" />
+</head>
+<body class="page-target">
+  <header>
+    <h1>Ручной ввод / Интеграции со сканерами уязвимостей</h1>
+    <nav class="nav">
+      <button id="theme-toggle" type="button" class="btn-secondary" title="Светлая тема" aria-label="Светлая тема">☀</button>
+      <a href="/data" class="nav-link">Сбор данных</a>
+      <a href="/cpe" class="nav-link">Выбор CPE</a>
+      <a href="/targets" class="nav-link active">Ручной ввод / Интеграции</a>
+      <a href="/generation" class="nav-link">Генерация сценариев</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="controls has-groups">
+      <div class="ctrl-group">
+        <h2>Создание объекта</h2>
+        <p>Введите список CVE вручную или загрузите XML-отчёт OpenVAS или другого сканера уязвимостей. Поле имени можно оставить пустым.</p>
+        <form id="target-form">
+          <div class="field">
+            <label for="target-name">Имя объекта:</label>
+            <div class="input-wrap">
+              <input id="target-name" type="text" placeholder="например, android_server_01" autocomplete="off" />
+            </div>
+            <div class="target-hint">Допустимы латиница, цифры, точка, подчёркивание и дефис.</div>
+          </div>
+
+          <div class="field">
+            <label for="cve-text">Список CVE:</label>
+            <textarea id="cve-text" class="cve-textarea" placeholder="например, CVE-2022-1234, CVE-2023-2222"></textarea>
+          </div>
+
+          <div class="field">
+            <label>XML-отчёт сканера уязвимостей:</label>
+            <div id="file-drop" class="dropzone" tabindex="0" role="button" aria-label="Загрузка XML-файла">
+              <input id="cve-file" type="file" accept=".xml" />
+              <div class="dropzone-title">Перетащите файл или нажмите для выбора</div>
+              <div class="dropzone-sub">Поддерживается только XML</div>
+            </div>
+            <div id="file-status" class="file-status"></div>
+          </div>
+
+          <div class="actions">
+            <button id="check-btn" type="button">Проверить</button>
+            <button id="go-btn" type="button">Перейти к генерации</button>
+            <button id="clear-btn" type="button" class="btn-secondary">Очистить</button>
+          </div>
+
+          <div id="check-result" class="check-summary"></div>
+        </form>
+      </div>
+
+      <div class="ctrl-group">
+        <h2>Очистка созданных объектов</h2>
+        <p>Очистка удаляет ранее созданные объекты и их связи с CVE.</p>
+        <div class="actions">
+          <button id="cleanup-old-btn" type="button" class="btn-secondary">Удалить старше 10 дней</button>
+          <button id="cleanup-all-btn" type="button" class="btn-secondary">Удалить все</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="output">
+      <h2>Поиск ранее созданных объектов</h2>
+      <div class="field">
+        <label for="target-search">Имя объекта:</label>
+        <div class="input-wrap">
+          <input id="target-search" type="text" placeholder="начните вводить имя" autocomplete="off" />
+        </div>
+        <div id="target-suggest" class="suggest"></div>
+      </div>
+      <div class="target-hint">Клик по элементу открывает переход к генерации</div>
+    </section>
+  </main>
+
+  <footer>
+    <span></span>
+  </footer>
+
+  <div id="upload-backdrop" class="modal-backdrop" hidden>
+    <div class="modal">
+      <div class="modal-title">Загрузка XML-отчёта</div>
+      <div id="upload-status" class="modal-body">Подготовка загрузки…</div>
+      <div class="progress">
+        <div id="upload-bar" class="progress-bar"></div>
+      </div>
+      <div class="modal-actions">
+        <button id="upload-cancel" class="btn-secondary">Отмена</button>
+        <button id="upload-close" class="btn-primary" disabled>Закрыть</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="target-confirm-backdrop" class="modal-backdrop" hidden>
+    <div class="modal">
+      <div class="modal-title">Переход к генерации</div>
+      <div id="target-confirm-body" class="modal-body"></div>
+      <div class="modal-actions">
+        <button id="target-confirm-cancel" class="btn-secondary">Отмена</button>
+        <button id="target-confirm-ok" class="btn-primary" disabled>Подтвердить</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="cleanup-confirm-backdrop" class="modal-backdrop" hidden>
+    <div class="modal">
+      <div class="modal-title">Очистка объектов</div>
+      <div id="cleanup-confirm-body" class="modal-body"></div>
+      <div class="modal-actions">
+        <button id="cleanup-cancel" class="btn-secondary">Отмена</button>
+        <button id="cleanup-confirm" class="btn-primary">Подтвердить</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="cleanup-result-backdrop" class="modal-backdrop" hidden>
+    <div class="modal">
+      <div class="modal-title">Результат очистки</div>
+      <div id="cleanup-result-body" class="modal-body"></div>
+      <div class="modal-actions">
+        <button id="cleanup-result-close" class="btn-primary">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/theme.js?v=20251030" defer></script>
+  <script src="/static/js/tooltip.js?v=20251111" defer></script>
+  <script src="/static/js/targets.js?v=20251130"></script>
+</body>
+</html>

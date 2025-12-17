@@ -57,6 +57,7 @@
       <button id="theme-toggle" type="button" class="btn-secondary" title="Светлая тема" aria-label="Светлая тема">☀</button>
       <a href="/data" class="nav-link">Сбор данных</a>
       <a href="/cpe" class="nav-link">Выбор CPE</a>
+      <a href="/targets" class="nav-link">Ручной ввод / Интеграции</a>
       <a href="/generation" class="nav-link active">Генерация сценариев</a>
 
     </nav>
@@ -65,14 +66,14 @@
   <main>
     <section class="controls has-groups">
       <div class="ctrl-group">
-        <h2>Визуализация связей CPE</h2>
+        <h2>Визуализация связей объекта</h2>
         <form id="graph-form" class="form-inline">
         <label for="cpe">URI объекта защиты:
-          <span class="help-icon" data-tip='Поле заполняется автоматически, если на странице "Выбор CPE" был выбран 
-          объект защиты и выполнен переход к генерации. Также поддерживается ручной ввод необходимого URI в данное поле.' 
+          <span class="help-icon" data-tip='Поле заполняется автоматически, если был выбран 
+          объект защиты на странице "Выбор CPE" или "Ручной ввод / Интеграции". Также поддерживается ручной ввод необходимого URI в данное поле.' 
           aria-label="Подсказка" tabindex="0">?</span>
         </label>
-        <input id="cpe" name="cpe" type="text" placeholder="например, cpe:2.3:a:linkace:linkace:*:*:*:*:*:*:*:*" />
+        <input id="cpe" name="cpe" type="text" placeholder="например, cpe:2.3:a:linkace:linkace:*:*:*:*:*:*:*:* или custom:my_target" />
         <label for="cpe">Режим отображения подграфа:</label>
         <select id="mode" name="mode">
           <option value="full" selected>Полный (строгий)</option>

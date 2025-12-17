@@ -152,6 +152,15 @@
       target_hw: 'Целевое оборудование',
       other: 'Другое',
     },
+    Target: {
+      targetUri: 'URI Target',
+      name: 'Имя объекта',
+      input_total: 'Всего CVE',
+      found_count: 'Найдено CVE',
+      missing_count: 'Отсутствует CVE',
+      created_at: 'Создан',
+      updated_at: 'Обновлён',
+    },
     CWE: {
       abstraction: 'Абстракция',
       status: 'Статус',
@@ -417,6 +426,7 @@
       case 'Technique': return 'rectangle';
       case 'CVE': return 'ellipse';
       case 'CPE': return 'octagon';
+      case 'Target': return 'octagon';
       case 'CWE': return 'diamond';
       case 'CAPEC': return 'pentagon';
       case 'ScenarioEndpoint': return 'hexagon';
@@ -893,7 +903,7 @@
       nodes.forEach(n => {
         const g = n.data('group');
         if (g === 'TechLabel') return;
-        const val = colors[g];
+        const val = colors[g] || (g === 'Target' ? colors.CPE : null);
         if (val) n.style('background-color', val);
         else n.removeStyle('background-color');
       });
@@ -989,6 +999,8 @@
   function inferPrefix() {
     try {
       if (isScenarioView) return (currentScenarioId === 'PRIMARY') ? 'primary' : 'linear';
+      const val = String(cpeInput && cpeInput.value || '').trim().toLowerCase();
+      if (val.startsWith('custom:')) return 'target';
       return 'cpe';
     } catch { return 'cpe'; }
   }
@@ -996,11 +1008,18 @@
     let vendor = 'unknown', product = 'unknown', version = 'unknown';
     try {
       const s = String(rawCpe || '').trim();
-      const parts = s.split(':');
-      if (parts.length >= 6 && parts[0] === 'cpe' && parts[1] === '2.3') {
-        vendor = parts[3] || vendor;
-        product = parts[4] || product;
-        version = parts[5] || version;
+      if (s.toLowerCase().startsWith('custom:')) {
+        const name = s.replace(/^custom:/i, '').trim();
+        vendor = 'custom';
+        product = name || product;
+        version = 'none';
+      } else {
+        const parts = s.split(':');
+        if (parts.length >= 6 && parts[0] === 'cpe' && parts[1] === '2.3') {
+          vendor = parts[3] || vendor;
+          product = parts[4] || product;
+          version = parts[5] || version;
+        }
       }
     } catch {}
     const norm = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
@@ -1095,7 +1114,7 @@
   async function handleExportJson() {
     try {
       const cpe = (cpeInput && cpeInput.value || '').trim();
-      if (!cpe) { alert('Сначала укажите cpe23Uri и постройте граф'); return; }
+      if (!cpe) { alert('Сначала укажите URI объекта и постройте граф'); return; }
       const mode = (scModeSel && scModeSel.value) || 'strict';
       let maxPer = 3;
       try { maxPer = Math.max(1, Math.min(10, parseInt(scMaxPerTacticInput.value || '3'))); } catch {}
@@ -1178,6 +1197,7 @@
       const props = raw.props || {};
       if (group === 'CVE') return props.identifier || ele.data('label') || '';
       if (group === 'CPE') return props.product || props.title || props.cpe23Uri || ele.data('label') || '';
+      if (group === 'Target') return props.name || props.targetUri || ele.data('label') || '';
       if (group === 'TacticGroup') return ele.data('label') || '';
       return props.name || ele.data('label') || '';
     } catch { return ''; }
@@ -1424,6 +1444,7 @@
   function colorByGroup(group) {
     switch (group) {
       case 'CPE': return '#8e44ad';
+      case 'Target': return '#8e44ad';
       case 'CVE': return '#e74c3c';
       case 'CWE': return '#e49659';
       case 'CAPEC': return '#3498db';
@@ -1436,7 +1457,8 @@
   function resolvedNodeColor(group, theme) {
     try {
       const t = theme || loadTheme() || {};
-      const nc = (t.nodeColors || {})[group];
+      const colors = (t.nodeColors || {});
+      const nc = colors[group] || (group === 'Target' ? colors.CPE : null);
       return nc || colorByGroup(group);
     } catch { return colorByGroup(group); }
   }
@@ -1651,7 +1673,7 @@
 
   async function generateScenarios() {
     const cpe = (cpeInput.value || '').trim();
-    if (!cpe) { alert('Сначала укажите cpe23Uri и постройте граф'); return; }
+    if (!cpe) { alert('Сначала укажите URI объекта и постройте граф'); return; }
     const mode = (scModeSel && scModeSel.value) || 'strict';
     const viewMode = (viewModeSel && viewModeSel.value) || 'linear';
     let maxPer = 3;
@@ -2231,10 +2253,10 @@
   async function draw() {
     const cpe = (cpeInput.value || '').trim();
     const mode = modeSel.value || 'full';
-    if (!cpe) {
-      alert('Укажите cpe23Uri');
-      return;
-    }
+      if (!cpe) {
+      alert('Укажите URI объекта');
+        return;
+      }
     saveForm();
     showLoading();
     // Дать браузеру шанс показать оверлей до тяжёлой работы
@@ -2272,7 +2294,7 @@
       }
 
       if (ncount === 0 && ecount === 0) {
-        container.innerHTML = '<div style="padding:8px;color:#666">Подграф пуст — проверьте cpe23Uri.</div>';
+        container.innerHTML = '<div style="padding:8px;color:#666">Подграф пуст — проверьте URI объекта.</div>';
         return;
       }
 

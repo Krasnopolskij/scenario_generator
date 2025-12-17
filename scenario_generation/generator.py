@@ -73,6 +73,13 @@ def _norm(s: Any) -> str:
         return ""
 
 
+def _is_target_uri(obj_uri: str) -> bool:
+    try:
+        return str(obj_uri or "").strip().lower().startswith("custom:")
+    except Exception:
+        return False
+
+
 def _safe_float(v: Any) -> float:
     try:
         return float(v)
@@ -187,7 +194,7 @@ def _select_techniques_with_limit(
 
 def _collect_evidence(
     graph: Graph,
-    cpe_uri: str,
+    obj_uri: str,
     relaxed: bool,
     use_gnn: bool = False,
 ) -> Dict[str, Dict[str, Any]]:
@@ -204,11 +211,15 @@ def _collect_evidence(
     остаётся прежней.
     """
 
-    # Прямые связи Technique -> CWE -> CVE -> CPE (0 CAPEC)
+    is_target = _is_target_uri(obj_uri)
+    node_label = "Target" if is_target else "CPE"
+    node_prop = "targetUri" if is_target else "cpe23Uri"
+
+    # Прямые связи Technique -> CWE -> CVE -> объект (0 CAPEC)
     q_direct = (
-        """
-        MATCH (cpe:CPE {cpe23Uri: $cpe})
-        MATCH (cve:CVE)-[:AFFECTS]->(cpe)
+        f"""
+        MATCH (obj:{node_label} {{{node_prop}: $obj}})
+        MATCH (cve:CVE)-[:AFFECTS]->(obj)
         MATCH (w:CWE)-[:CWE_TO_CVE]->(cve)
         MATCH (t:Technique)-[:TECHNIQUE_TO_CWE]->(w)
         RETURN DISTINCT t, cve, w
@@ -219,8 +230,8 @@ def _collect_evidence(
     capec_to_tech_rel = "CAPEC_TO_TECHNIQUE|CAPEC_TO_TECHNIQUE_PRED" if use_gnn else "CAPEC_TO_TECHNIQUE"
     q_capec = (
         f"""
-        MATCH (cpe:CPE {{cpe23Uri: $cpe}})
-        MATCH (cve:CVE)-[:AFFECTS]->(cpe)
+        MATCH (obj:{node_label} {{{node_prop}: $obj}})
+        MATCH (cve:CVE)-[:AFFECTS]->(obj)
         MATCH (w:CWE)-[:CWE_TO_CVE]->(cve)
         MATCH (cap2:CAPEC)-[:CAPEC_TO_CWE]->(w)
         MATCH (cap1:CAPEC)-[:{capec_to_tech_rel}]->(t:Technique)
@@ -262,14 +273,14 @@ def _collect_evidence(
                 rec["capecs"].append(cj)
 
     # Выполняем прямой запрос
-    for row in graph.run(q_direct, cpe=cpe_uri):
+    for row in graph.run(q_direct, obj=obj_uri):
         t = row.get("t") if hasattr(row, "get") else row[0]
         cve = row.get("cve") if hasattr(row, "get") else row[1]
         w = row.get("w") if hasattr(row, "get") else row[2]
         add_evidence(t, cve=cve, w=w, caps=[])
 
     # Через CAPEC
-    for row in graph.run(q_capec, cpe=cpe_uri, relaxed=bool(relaxed)):
+    for row in graph.run(q_capec, obj=obj_uri, relaxed=bool(relaxed)):
         t = row.get("t") if hasattr(row, "get") else row[0]
         cve = row.get("cve") if hasattr(row, "get") else row[1]
         w = row.get("w") if hasattr(row, "get") else row[2]
@@ -410,7 +421,7 @@ def _k_best_scenarios(
 
 def generate_scenarios(
     graph: Graph,
-    cpe_uri: str,
+    obj_uri: str,
     mode: Literal["strict", "relaxed", "gnn"] = "strict",
     max_per_tactic: int = 3,
     max_scenarios: Optional[int] = None,
@@ -419,7 +430,7 @@ def generate_scenarios(
     max_scen = int(MAX_SCENARIOS if max_scenarios is None else max_scenarios)
 
     use_gnn = mode == "gnn"
-    evidence = _collect_evidence(graph, cpe_uri=cpe_uri, relaxed=relaxed, use_gnn=use_gnn)
+    evidence = _collect_evidence(graph, obj_uri=obj_uri, relaxed=relaxed, use_gnn=use_gnn)
 
     # Группируем техники по тактикам
     buckets: List[Tuple[int, str, List[Dict[str, Any]]]] = []
@@ -483,7 +494,7 @@ def generate_scenarios(
     scenarios = _k_best_scenarios(candidate_buckets, max_scen, max_ratio_by_tactic, sum_max_ratio)
 
     return {
-        "cpe": cpe_uri,
+        "cpe": obj_uri,
         "mode": mode,
         "max_per_tactic": max_per_tactic,
         "max_scenarios": max_scen,
