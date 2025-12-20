@@ -412,6 +412,14 @@ def stream_process(cmd: List[str], run_id: str, tty_columns: Optional[int] = Non
 
 @app.post("/run/load")
 async def run_loader(request: Request):
+    load_dotenv()
+    allow_loader = os.getenv("ALLOW_LOADER_CONTROL", "false").lower() in {"1", "true", "yes"}
+    if not allow_loader:
+        return JSONResponse(
+            {"error": "Управление загрузчиками отключено администатором"},
+            status_code=403,
+        )
+        
     try:
         payload = await request.json()
     except Exception:
@@ -474,6 +482,13 @@ async def run_loader(request: Request):
 
 @app.post("/run/refresh_epss_kev")
 async def run_refresh_epss_kev(request: Request):
+    allow_update = os.getenv("ALLOW_UPDATE_CONTROL", "false").lower() in {"1", "true", "yes"}
+    if not allow_update:
+        return JSONResponse(
+            {"error": "Управление обновлениями EPSS и CISA KEV отключено администатором"},
+            status_code=403,
+        )
+    
     try:
         payload = await request.json()
     except Exception:
@@ -507,6 +522,13 @@ async def run_refresh_epss_kev(request: Request):
 
 @app.post("/run/gnn")
 async def run_gnn(request: Request):
+    allow_gnn = os.getenv("ALLOW_GNN_CONTROL", "false").lower() in {"1", "true", "yes"}
+    if not allow_gnn:
+        return JSONResponse(
+            {"error": "Управление GNN отключено администатором"},
+            status_code=403,
+        )
+    
     try:
         payload = await request.json()
     except Exception:
@@ -556,6 +578,13 @@ async def run_gnn(request: Request):
 
 @app.post("/gnn/clear")
 def clear_gnn_predictions():
+    allow_gnn = os.getenv("ALLOW_GNN_CONTROL", "false").lower() in {"1", "true", "yes"}
+    if not allow_gnn:
+        return JSONResponse(
+            {"error": "Управление GNN отключено администатором"},
+            status_code=403,
+        )
+    
     try:
         g = get_graph()
     except Exception as e:
