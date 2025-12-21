@@ -69,6 +69,7 @@ ALLOWED_LOADERS = {"techniques", "capec", "cwe", "cve"}
 # Регистрация запущенных процессов: run_id -> Popen
 RUNS: Dict[str, subprocess.Popen] = {}
 RUNS_LOCK = threading.Lock()
+RUN_KINDS: Dict[str, str] = {}
 
 # Neo4j connection (cached)
 _GRAPH: Optional[Graph] = None
@@ -85,6 +86,24 @@ def get_graph() -> Graph:
         raise RuntimeError("Отсутствуют NEO4J_URI/NEO4J_USER/NEO4J_PASSWORD. Укажите их в .env")
     _GRAPH = Graph(neo4j_uri, auth=(neo4j_user, neo4j_password), name=neo4j_db)
     return _GRAPH
+
+
+def _cleanup_runs_locked():
+    """Удаляем завершённые процессы из реестра под блокировкой."""
+    finished = [rid for rid, proc in RUNS.items() if proc.poll() is not None]
+    for rid in finished:
+        RUNS.pop(rid, None)
+        RUN_KINDS.pop(rid, None)
+
+
+def _active_run_of_kind(kind: str, exclude_run_id: Optional[str] = None) -> Optional[str]:
+    """Возвращает run_id активного процесса указанного типа или None."""
+    with RUNS_LOCK:
+        _cleanup_runs_locked()
+        for rid, proc in RUNS.items():
+            if proc.poll() is None and RUN_KINDS.get(rid) == kind and rid != exclude_run_id:
+                return rid
+    return None
 
 
 def normalize_object_uri(raw: str) -> Tuple[str, bool]:
@@ -305,7 +324,14 @@ def build_gnn_command(
     return cmd
 
 
-def stream_process(cmd: List[str], run_id: str, tty_columns: Optional[int] = None, tty_rows: Optional[int] = None, extra_env: Optional[Dict[str, str]] = None):
+def stream_process(
+    cmd: List[str],
+    run_id: str,
+    tty_columns: Optional[int] = None,
+    tty_rows: Optional[int] = None,
+    extra_env: Optional[Dict[str, str]] = None,
+    kind: Optional[str] = None,
+):
     # POSIX: используем PTY, чтобы дочерний процесс видел TTY и tqdm печатал с \r
     if os.name != "nt":
         import pty
@@ -354,6 +380,8 @@ def stream_process(cmd: List[str], run_id: str, tty_columns: Optional[int] = Non
         os.close(slave_fd)
         with RUNS_LOCK:
             RUNS[run_id] = proc
+            if kind:
+                RUN_KINDS[run_id] = kind
         try:
             while True:
                 r, _, _ = select.select([master_fd], [], [], 0.1)
@@ -384,6 +412,7 @@ def stream_process(cmd: List[str], run_id: str, tty_columns: Optional[int] = Non
             code = proc.wait()
             with RUNS_LOCK:
                 RUNS.pop(run_id, None)
+                RUN_KINDS.pop(run_id, None)
             yield f"\n[exit code: {code}]\n"
     else:
         # Windows
@@ -397,6 +426,8 @@ def stream_process(cmd: List[str], run_id: str, tty_columns: Optional[int] = Non
         )
         with RUNS_LOCK:
             RUNS[run_id] = proc
+            if kind:
+                RUN_KINDS[run_id] = kind
         try:
             if proc.stdout is not None:
                 for line in iter(proc.stdout.readline, ""):
@@ -407,6 +438,7 @@ def stream_process(cmd: List[str], run_id: str, tty_columns: Optional[int] = Non
             code = proc.wait()
             with RUNS_LOCK:
                 RUNS.pop(run_id, None)
+                RUN_KINDS.pop(run_id, None)
             yield f"\n[exit code: {code}]\n"
 
 
@@ -456,7 +488,14 @@ async def run_loader(request: Request):
     # Определяем/проверяем run_id
     if not isinstance(run_id, str) or not run_id:
         run_id = str(int(time.time() * 1000))
+    active_loader = _active_run_of_kind("loader", exclude_run_id=run_id)
+    if active_loader:
+        return JSONResponse(
+            {"error": "Уже выполняется другой процесс загрузчика", "run_id": active_loader},
+            status_code=409,
+        )
     with RUNS_LOCK:
+        _cleanup_runs_locked()
         if run_id in RUNS and RUNS[run_id].poll() is None:
             return JSONResponse(
                 {"error": "Уже есть активный процесс с таким run_id", "run_id": run_id},
@@ -470,7 +509,14 @@ async def run_loader(request: Request):
         # Если фронт передал check_hash=true/false, пробрасываем в env дочернего процесса
         if isinstance(check_hash, bool):
             extra_env["NVD_CHECK_HASH"] = "true" if check_hash else "false"
-        for chunk in stream_process(cmd, run_id, tty_columns=tty_columns, tty_rows=tty_rows, extra_env=extra_env or None):
+        for chunk in stream_process(
+            cmd,
+            run_id,
+            tty_columns=tty_columns,
+            tty_rows=tty_rows,
+            extra_env=extra_env or None,
+            kind="loader",
+        ):
             yield chunk
 
     return StreamingResponse(
@@ -499,7 +545,14 @@ async def run_refresh_epss_kev(request: Request):
 
     if not isinstance(run_id, str) or not run_id:
         run_id = str(int(time.time() * 1000))
+    active_loader = _active_run_of_kind("loader", exclude_run_id=run_id)
+    if active_loader:
+        return JSONResponse(
+            {"error": "Уже выполняется другой процесс загрузчика", "run_id": active_loader},
+            status_code=409,
+        )
     with RUNS_LOCK:
+        _cleanup_runs_locked()
         if run_id in RUNS and RUNS[run_id].poll() is None:
             return JSONResponse(
                 {"error": "Уже есть активный процесс с таким run_id", "run_id": run_id},
@@ -510,7 +563,14 @@ async def run_refresh_epss_kev(request: Request):
 
     def generator():
         yield f"$ {' '.join(cmd)}\n[run_id: {run_id}]\n\n"
-        for chunk in stream_process(cmd, run_id, tty_columns=tty_columns, tty_rows=tty_rows, extra_env=None):
+        for chunk in stream_process(
+            cmd,
+            run_id,
+            tty_columns=tty_columns,
+            tty_rows=tty_rows,
+            extra_env=None,
+            kind="loader",
+        ):
             yield chunk
 
     return StreamingResponse(
@@ -548,6 +608,14 @@ async def run_gnn(request: Request):
     if not isinstance(run_id, str) or not run_id:
         run_id = str(int(time.time() * 1000))
     with RUNS_LOCK:
+        _cleanup_runs_locked()
+    active_gnn = _active_run_of_kind("gnn", exclude_run_id=run_id)
+    if active_gnn:
+        return JSONResponse(
+            {"error": "Уже выполняется другой процесс GNN", "run_id": active_gnn},
+            status_code=409,
+        )
+    with RUNS_LOCK:
         if run_id in RUNS and RUNS[run_id].poll() is None:
             return JSONResponse(
                 {"error": "Уже есть активный процесс с таким run_id", "run_id": run_id},
@@ -566,7 +634,14 @@ async def run_gnn(request: Request):
 
     def generator():
         yield f"$ {' '.join(cmd)}\n[run_id: {run_id}]\n\n"
-        for chunk in stream_process(cmd, run_id, tty_columns=tty_columns, tty_rows=tty_rows, extra_env=None):
+        for chunk in stream_process(
+            cmd,
+            run_id,
+            tty_columns=tty_columns,
+            tty_rows=tty_rows,
+            extra_env=None,
+            kind="gnn",
+        ):
             yield chunk
 
     return StreamingResponse(
@@ -621,6 +696,7 @@ async def stop_run(request: Request):
         return JSONResponse({"error": "run_id обязателен"}, status_code=400)
 
     with RUNS_LOCK:
+        _cleanup_runs_locked()
         proc = RUNS.get(run_id)
     if not proc or proc.poll() is not None:
         return JSONResponse({"status": "not-found-or-exited", "run_id": run_id})
@@ -638,6 +714,7 @@ async def stop_run(request: Request):
     finally:
         with RUNS_LOCK:
             RUNS.pop(run_id, None)
+            RUN_KINDS.pop(run_id, None)
     return JSONResponse({"status": "stopped", "run_id": run_id})
 
 
