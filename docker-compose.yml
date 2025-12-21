@@ -2,6 +2,7 @@ services:
   neo4j:
     image: neo4j:5.25-community
     container_name: scenario_neo4j
+    hostname: neo4j
     environment:
       # Учётные данные БД, задать в .env (NEO4J_AUTH=user/password)
       - NEO4J_AUTH=${NEO4J_AUTH}
@@ -17,7 +18,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
-      network: host
+      #network: host
     container_name: scenario_app
     depends_on:
       - neo4j
