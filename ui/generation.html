@@ -238,10 +238,14 @@
             <option value="damage_A">Ущерб доступности</option>
             <option value="risk_C">Риск нарушения конфиденциальности</option>
             <option value="risk_I">Риск нарушения целостности</option>
-            <option value="risk_A">Риск нарушения доступности</option>
+          <option value="risk_A">Риск нарушения доступности</option>
           </select>
+          <label for="landscape-show-cves">
+            <input type="checkbox" id="landscape-show-cves" />
+            Подписи CVE
+          </label>
           <label for="landscape-show-tactics">
-            <input type="checkbox" id="landscape-show-tactics" checked />
+            <input type="checkbox" id="landscape-show-tactics" />
             Подписи тактик
           </label>
           <label for="landscape-mono">
@@ -270,7 +274,7 @@
   <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
   <script src="/static/js/theme.js?v=20251030" defer></script>
   <script src="/static/js/tooltip.js?v=20251111" defer></script>
-  <script src="/static/js/landscape.js?v=20251115"></script>
-  <script src="/static/js/graph.js?v=20251115-landscape"></script>
+  <script src="/static/js/landscape.js?v=20251128-cvelabels-rotate2"></script>
+  <script src="/static/js/graph.js?v=20251128-cvelabels"></script>
 </body>
 </html>

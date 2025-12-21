@@ -167,10 +167,16 @@
   }
 
   function buildLayout(params) {
-    const { xCount, yLabels, metric, colors, showTactics, camera } = params;
+    const { xCount, xLabels, yLabels, metric, colors, showTactics, showCves, camera } = params;
     const xMax = Math.max(0, xCount - 1);
     const yMax = Math.max(0, yLabels.length - 1);
     const ratioX = Math.min(2.0, Math.max(1, (xCount || 1) / Math.max(1, yLabels.length) * 0.9));
+    const xTicks = Array.from({ length: xCount }, (_, idx) => idx);
+    const showXLabels = !!showCves;
+    const xTickText = showXLabels ? xTicks.map((_, idx) => {
+      const label = xLabels && xLabels[idx];
+      return label ? String(label) : '';
+    }) : xTicks.map(() => '');
     return {
       paper_bgcolor: colors.paper,
       plot_bgcolor: colors.paper,
@@ -179,11 +185,14 @@
       scene: {
         bgcolor: colors.canvas,
         xaxis: {
-          title: 'CVE',
-          showticklabels: false,
+          title: showXLabels ? '' : 'CVE',
           tickmode: 'array',
-          tickvals: Array.from({ length: xCount }, (_, idx) => idx),
-          ticktext: Array.from({ length: xCount }, () => ''),
+          tickvals: xTicks,
+          ticktext: xTickText,
+          showticklabels: showXLabels,
+          ticks: showXLabels ? 'outside' : '',
+          tickangle: showXLabels ? 50 : 0,
+          tickfont: showXLabels ? { size: 11 } : undefined,
           showgrid: true,
           range: [-0.6, xMax + 0.6],
           gridcolor: colors.grid,
@@ -244,6 +253,7 @@
       getColors,
       buildFileName,
       getMonoFlag,
+      getShowCves,
       getShowTactics,
     } = opts || {};
 
@@ -314,6 +324,7 @@
       tactics.forEach((t, idx) => tacticToPos.set(t, idx));
 
       const values = top.map((t) => safeNum(t[currentMetric]));
+      const cveLabels = top.map((t) => t.id);
       const maxVal = Math.max(...values, 0);
       const colors = getColors ? getColors() : {
         paper: '#0f1326',
@@ -323,6 +334,7 @@
         hoverText: '#e5e7ef',
       };
       const mono = typeof getMonoFlag === 'function' ? !!getMonoFlag() : false;
+      const showCves = typeof getShowCves === 'function' ? !!getShowCves() : true;
       const traces = [];
       top.forEach((item, idx) => {
         const faces = buildBarSurfaces(
@@ -340,8 +352,10 @@
 
       const layout = buildLayout({
         xCount: top.length,
+        xLabels: cveLabels,
         yLabels: tactics.map((t) => formatTacticLabel(t, translateTactic)),
         metric: currentMetric,
+        showCves,
         showTactics: typeof getShowTactics === 'function' ? !!getShowTactics() : true,
         camera: lastCamera || DEFAULT_CAMERA,
         colors: {

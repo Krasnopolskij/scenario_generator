@@ -41,6 +41,7 @@
   const landscapePlot = document.getElementById('landscape-plot');
   const landscapeNotice = document.getElementById('landscape-notice');
   const landscapeMono = document.getElementById('landscape-mono');
+  const landscapeShowCves = document.getElementById('landscape-show-cves');
   const landscapeShowTactics = document.getElementById('landscape-show-tactics');
   const themeCanvasInput = document.getElementById('theme-canvas');
   const themeLabelInput = document.getElementById('theme-label');
@@ -255,6 +256,7 @@
       }),
       buildFileName: buildLandscapeFileName,
       getMonoFlag: () => (landscapeMono && !landscapeMono.disabled ? !!landscapeMono.checked : false),
+      getShowCves: () => (landscapeShowCves ? !!landscapeShowCves.checked : true),
       getShowTactics: () => (landscapeShowTactics ? !!landscapeShowTactics.checked : true),
     });
     if (landscapeBtn) {
@@ -283,6 +285,9 @@
       applyMonoAvailability();
       document.addEventListener('sg:theme-change', applyMonoAvailability);
       landscapeMono.addEventListener('change', () => { if (landscape) landscape.render && landscape.render(); });
+    }
+    if (landscapeShowCves) {
+      landscapeShowCves.addEventListener('change', () => { if (landscape) landscape.render && landscape.render(); });
     }
     if (landscapeShowTactics) {
       landscapeShowTactics.addEventListener('change', () => { if (landscape) landscape.render && landscape.render(); });
