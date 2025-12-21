@@ -131,6 +131,18 @@
       cvss_epss_max_ratio: 'Макс. CVSS/EPSS по тактике',
       damage: 'Потенциальный ущерб',
       risk: 'Риск',
+      damage_C: 'Ущерб конфиденциальности',
+      damage_I: 'Ущерб целостности',
+      damage_A: 'Ущерб доступности',
+      risk_C: 'Риск нарушения конфиденциальности',
+      risk_I: 'Риск нарушения целостности',
+      risk_A: 'Риск нарушения доступности',
+      cvss_C_epss_ratio: 'Отношение Conf/EPSS',
+      cvss_I_epss_ratio: 'Отношение Integ/EPSS',
+      cvss_A_epss_ratio: 'Отношение Avail/EPSS',
+      cvss_C_epss_max_ratio: 'Макс. Conf/EPSS по тактике',
+      cvss_I_epss_max_ratio: 'Макс. Integ/EPSS по тактике',
+      cvss_A_epss_max_ratio: 'Макс. Avail/EPSS по тактике',
       published: 'Дата публикации',
       epss_from_first: 'EPSS из FIRST',
       patch_vendor: 'Патч от вендора',
@@ -1524,17 +1536,29 @@
       return;
     }
 
-    // Специальный порядок для узлов CVE: identifier, затем C/A/I подряд
+    // Специальный порядок для узлов CVE: identifier, затем основные метрики (C/A/I, EPSS, ущерб/риск)
     if (group === 'CVE') {
-      const priority = ['identifier', 'cvss_C_score', 'cvss_A_score', 'cvss_I_score'];
+      const priority = [
+        'identifier',
+        'cvss_C_score', 'cvss_I_score', 'cvss_A_score',
+        'cvss', 'epss', 'epss_norm',
+        'damage', 'risk',
+        'damage_C', 'damage_I', 'damage_A',
+        'risk_C', 'risk_I', 'risk_A',
+      ];
+      const skip = new Set([
+        'cvss_epss_ratio', 'cvss_epss_max_ratio',
+        'cvss_C_epss_ratio', 'cvss_I_epss_ratio', 'cvss_A_epss_ratio',
+        'cvss_C_epss_max_ratio', 'cvss_I_epss_max_ratio', 'cvss_A_epss_max_ratio',
+      ]);
       const seen = new Set();
       for (const k of priority) {
-        if (!(k in props)) continue;
+        if (!(k in props) || skip.has(k)) continue;
         addInspectorRow(rows, k, props[k], group);
         seen.add(k);
       }
       for (const k of Object.keys(props)) {
-        if (seen.has(k)) continue;
+        if (seen.has(k) || skip.has(k)) continue;
         addInspectorRow(rows, k, props[k], group);
         if (rows.length > 30) break;
       }

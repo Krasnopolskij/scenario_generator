@@ -4,6 +4,15 @@
     epss_norm: 'Вероятность эксплуатации',
     damage: 'Ущерб',
     risk: 'Риск',
+    damage_C: 'Ущерб конфиденциальности',
+    damage_I: 'Ущерб целостности',
+    damage_A: 'Ущерб доступности',
+    risk_C: 'Риск нарушения конфиденциальности',
+    risk_I: 'Риск нарушения целостности',
+    risk_A: 'Риск нарушения доступности',
+  };
+  const METRIC_DIGITS = {
+    risk: 5, risk_C: 5, risk_I: 5, risk_A: 5,
   };
 
   const SEP = '<span style="display:block;border-top:2px solid rgba(255,255,255,0.45);margin:6px 0;"></span>';
@@ -72,12 +81,24 @@
             epss_norm: 0,
             damage: 0,
             risk: 0,
+            damage_C: 0,
+            damage_I: 0,
+            damage_A: 0,
+            risk_C: 0,
+            risk_I: 0,
+            risk_A: 0,
           };
           rec.cvss = Math.max(rec.cvss, safeNum(props.cvss));
           rec.epss = Math.max(rec.epss, safeNum(props.epss));
           rec.epss_norm = Math.max(rec.epss_norm, safeNum(props.epss_norm));
           rec.damage = Math.max(rec.damage, safeNum(props.damage));
           rec.risk = Math.max(rec.risk, safeNum(props.risk));
+          rec.damage_C = Math.max(rec.damage_C, safeNum(props.damage_C));
+          rec.damage_I = Math.max(rec.damage_I, safeNum(props.damage_I));
+          rec.damage_A = Math.max(rec.damage_A, safeNum(props.damage_A));
+          rec.risk_C = Math.max(rec.risk_C, safeNum(props.risk_C));
+          rec.risk_I = Math.max(rec.risk_I, safeNum(props.risk_I));
+          rec.risk_A = Math.max(rec.risk_A, safeNum(props.risk_A));
           byKey.set(key, rec);
         }
       }
@@ -101,7 +122,7 @@
       .slice(0, 20);
   }
 
-  function buildBarSurfaces(bar, pos, metricValue, maxValue, hoverBg, hoverText, mono=false) {
+  function buildBarSurfaces(bar, pos, metricKey, metricValue, maxValue, hoverBg, hoverText, mono=false) {
     const hw = 0.45;
     const x0 = pos.x - hw; const x1 = pos.x + hw;
     const y0 = pos.y - hw; const y1 = pos.y + hw;
@@ -117,11 +138,14 @@
       { x: [[x1, x1], [x1, x1]], y: [[y0, y1], [y0, y1]], z: [[z0, z0], [z1, z1]] }, // правая
     ];
 
+    const metricLabel = METRIC_TITLES[metricKey] || 'Значение';
+    const digits = Number.isFinite(METRIC_DIGITS[metricKey]) ? METRIC_DIGITS[metricKey] : (String(metricKey || '').startsWith('risk') ? 5 : 4);
     const hover = [
       `<b>ID:</b> ${bar.id}`,
       `<b>CVSS:</b> ${fmt(bar.cvss, 2)}`,
       `<b>EPSS:</b> ${fmt(bar.epss, 4)}`,
       SEP,
+      `<b>${metricLabel}:</b> ${fmt(metricValue, digits)}`,
       `<b>Вероятность:</b> ${fmt(bar.epss_norm, 4)}`,
       `<b>Ущерб:</b> ${fmt(bar.damage, 4)}`,
       `<b>Риск:</b> ${fmt(bar.risk, 5)}`,
@@ -304,6 +328,7 @@
         const faces = buildBarSurfaces(
           item,
           { x: idx, y: tacticToPos.get(item.tactic) || 0 },
+          currentMetric,
           safeNum(item[currentMetric]),
           maxVal,
           colors.hoverBg || 'rgba(16,20,37,0.92)',

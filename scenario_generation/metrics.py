@@ -75,18 +75,18 @@ def _unique_cves_by_key(cves: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return unique
 
 
-def _calc_ratios(cves: List[Dict[str, Any]]) -> Tuple[List[float], float]:
+def _calc_ratios(cves: List[Dict[str, Any]], base_key: str = "cvss") -> Tuple[List[float], float]:
     ratios: List[float] = []
     for cv in cves or []:
         props = (cv or {}).get("props") or {}
         epss = _safe_float(props.get("epss"))
-        base_cvss = _safe_float(props.get("cvss"))
+        base_val = _safe_float(props.get(base_key))
 
         epss_eff = max(epss, EPSS_EFF_TRESHHOLD)
         # if epss <= 0:
         #     ratios.append(0.0)
         #     continue
-        ratios.append(base_cvss / epss_eff)
+        ratios.append(base_val / epss_eff)
 
     max_ratio = max(ratios) if ratios else 0.0
     return ratios, max_ratio
@@ -99,17 +99,33 @@ def _calc_scores_map(cves: List[Dict[str, Any]]) -> Tuple[Dict[str, Dict[str, fl
         return {}, 0.0
 
     epss_norm_values = _calc_epss_norm(unique)
-    ratio_values, max_ratio = _calc_ratios(unique)
-    if max_ratio <= 0:
-        damage_values = [0.0 for _ in ratio_values]
-    else:
-        damage_values = [r / max_ratio for r in ratio_values]
-    risk_values: List[float] = []
-    if epss_norm_values and damage_values:
+    ratio_values, max_ratio = _calc_ratios(unique, "cvss")
+    ratio_c, _ = _calc_ratios(unique, "cvss_C_score")
+    ratio_i, _ = _calc_ratios(unique, "cvss_I_score")
+    ratio_a, _ = _calc_ratios(unique, "cvss_A_score")
+
+    def _normalize_damage(values: List[float], max_val: float) -> List[float]:
+        if max_val <= 0:
+            return [0.0 for _ in values]
+        return [v / max_val for v in values]
+
+    damage_values = _normalize_damage(ratio_values, max_ratio)
+    damage_c = _normalize_damage(ratio_c, max_ratio)
+    damage_i = _normalize_damage(ratio_i, max_ratio)
+    damage_a = _normalize_damage(ratio_a, max_ratio)
+
+    def _calc_risk(damage: List[float]) -> List[float]:
+        out: List[float] = []
         for idx in range(len(unique)):
             e = epss_norm_values[idx] if idx < len(epss_norm_values) else 0.0
-            d = damage_values[idx] if idx < len(damage_values) else 0.0
-            risk_values.append(e * d)
+            d = damage[idx] if idx < len(damage) else 0.0
+            out.append(e * d)
+        return out
+
+    risk_values: List[float] = _calc_risk(damage_values)
+    risk_c = _calc_risk(damage_c)
+    risk_i = _calc_risk(damage_i)
+    risk_a = _calc_risk(damage_a)
 
     scores: Dict[str, Dict[str, float]] = {}
     for idx, cv in enumerate(unique):
@@ -122,6 +138,18 @@ def _calc_scores_map(cves: List[Dict[str, Any]]) -> Tuple[Dict[str, Dict[str, fl
             "risk": risk_values[idx] if idx < len(risk_values) else 0.0,
             "ratio": ratio_values[idx] if idx < len(ratio_values) else 0.0,
             "max_ratio": max_ratio,
+            "damage_C": damage_c[idx] if idx < len(damage_c) else 0.0,
+            "damage_I": damage_i[idx] if idx < len(damage_i) else 0.0,
+            "damage_A": damage_a[idx] if idx < len(damage_a) else 0.0,
+            "risk_C": risk_c[idx] if idx < len(risk_c) else 0.0,
+            "risk_I": risk_i[idx] if idx < len(risk_i) else 0.0,
+            "risk_A": risk_a[idx] if idx < len(risk_a) else 0.0,
+            "ratio_C": ratio_c[idx] if idx < len(ratio_c) else 0.0,
+            "ratio_I": ratio_i[idx] if idx < len(ratio_i) else 0.0,
+            "ratio_A": ratio_a[idx] if idx < len(ratio_a) else 0.0,
+            "max_ratio_C": max_ratio,
+            "max_ratio_I": max_ratio,
+            "max_ratio_A": max_ratio,
         }
     return scores, max_ratio
 
@@ -143,6 +171,18 @@ def enrich_cves_with_scores_tactic(cves: List[Dict[str, Any]]) -> float:
         props["risk"] = scores[key]["risk"]
         props["cvss_epss_ratio"] = scores[key]["ratio"]
         props["cvss_epss_max_ratio"] = scores[key]["max_ratio"]
+        props["damage_C"] = scores[key]["damage_C"]
+        props["damage_I"] = scores[key]["damage_I"]
+        props["damage_A"] = scores[key]["damage_A"]
+        props["risk_C"] = scores[key]["risk_C"]
+        props["risk_I"] = scores[key]["risk_I"]
+        props["risk_A"] = scores[key]["risk_A"]
+        props["cvss_C_epss_ratio"] = scores[key]["ratio_C"]
+        props["cvss_I_epss_ratio"] = scores[key]["ratio_I"]
+        props["cvss_A_epss_ratio"] = scores[key]["ratio_A"]
+        props["cvss_C_epss_max_ratio"] = scores[key]["max_ratio_C"]
+        props["cvss_I_epss_max_ratio"] = scores[key]["max_ratio_I"]
+        props["cvss_A_epss_max_ratio"] = scores[key]["max_ratio_A"]
     return max_ratio
 
 

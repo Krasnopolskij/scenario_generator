@@ -1020,6 +1020,12 @@ def api_export(cpe: str, mode: str = "strict", max_per_tactic: int = 3):
                     "epss_norm": cprops.get("epss_norm") or 0,
                     "damage": cprops.get("damage") or 0,
                     "risk": cprops.get("risk") or 0,
+                    "damage_C": cprops.get("damage_C") or 0,
+                    "damage_I": cprops.get("damage_I") or 0,
+                    "damage_A": cprops.get("damage_A") or 0,
+                    "risk_C": cprops.get("risk_C") or 0,
+                    "risk_I": cprops.get("risk_I") or 0,
+                    "risk_A": cprops.get("risk_A") or 0,
                 })
             items.append({
                 "technique_id": tid,

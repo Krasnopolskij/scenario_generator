@@ -493,6 +493,18 @@ def generate_scenarios(
     candidate_buckets, sum_max_ratio = _build_candidate_buckets(buckets, max_ratio_by_tactic)
     scenarios = _k_best_scenarios(candidate_buckets, max_scen, max_ratio_by_tactic, sum_max_ratio)
 
+    # Дополнительно ранжируем по риску, чтобы гарантировать корректный порядок даже при equal-score кейсах.
+    scenarios.sort(
+        key=lambda s: (
+            -_safe_float(s.get("risk")),
+            -_safe_float(s.get("impact")),
+            -_safe_float(s.get("probability")),
+            s.get("id", ""),
+        )
+    )
+    for idx, scen in enumerate(scenarios):
+        scen["id"] = f"S{idx + 1}"
+
     return {
         "cpe": obj_uri,
         "mode": mode,
