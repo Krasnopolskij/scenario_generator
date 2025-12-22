@@ -37,6 +37,7 @@
   const landscapeBackdrop = document.getElementById('landscape-backdrop');
   const landscapeMetricSel = document.getElementById('landscape-metric');
   const landscapeExportBtn = document.getElementById('landscape-export');
+  const landscapeExportCsvBtn = document.getElementById('landscape-export-csv');
   const landscapeCloseBtn = document.getElementById('landscape-close');
   const landscapePlot = document.getElementById('landscape-plot');
   const landscapeNotice = document.getElementById('landscape-notice');
@@ -106,6 +107,15 @@
       };
       return map[key] || raw;
     } catch { return name; }
+  }
+
+  // Перевод тактики в многострочную подпись (одно слово на строку)
+  function tacticLabelMultiline(label) {
+    try {
+      const s = String(label || '').trim();
+      if (!s) return s;
+      return s.split(/\s+/).join('\n');
+    } catch { return label; }
   }
 
   // Перевод названий свойств для панели инспектора
@@ -244,6 +254,7 @@
       plotEl: landscapePlot,
       metricSelect: landscapeMetricSel,
       exportBtn: landscapeExportBtn,
+      exportCsvBtn: landscapeExportCsvBtn,
       closeBtn: landscapeCloseBtn,
       noticeEl: landscapeNotice,
       translateTactic: translateTacticName,
@@ -446,7 +457,7 @@
       case 'Target': return 'octagon';
       case 'CWE': return 'diamond';
       case 'CAPEC': return 'pentagon';
-      case 'ScenarioEndpoint': return 'hexagon';
+      case 'ScenarioEndpoint': return 'ellipse';
       default: return 'ellipse';
     }
   }
@@ -474,11 +485,22 @@
             return '#dddddd';
           },
           'border-width': 1.2, 'border-color': '#7a8094',
-          'width': ele => (ele.data('group') === 'Technique' ? 50 : (ele.data('group') === 'CVE' ? 40 : 46)),
-          'height': ele => (ele.data('group') === 'Technique' ? 50 : (ele.data('group') === 'CVE' ? 40 : 46)),
+          'width': ele => {
+            const g = ele.data('group');
+            if (g === 'Technique') return 50;
+            if (g === 'CVE') return 40;
+            return 46;
+          },
+          'height': ele => {
+            const g = ele.data('group');
+            if (g === 'Technique') return 50;
+            if (g === 'CVE') return 40;
+            return 46;
+          },
           'padding': 0
         }},
-        { selector: 'node[group="TechLabel"]', style: { 'background-opacity': 0, 'border-width': 0, 'label': 'data(label)', 'font-size': 11, 'color': muted, 'text-halign': 'center', 'text-valign':'center', 'events': 'no' }},
+        { selector: 'node[group="ScenarioEndpoint"]', style: { 'font-size': 16, 'width': 80, 'height': 46, 'shape': 'ellipse' }},
+        { selector: 'node[group="TechLabel"]', style: { 'background-opacity': 0, 'border-width': 0, 'label': 'data(label)', 'font-size': 16, 'color': muted, 'text-halign': 'center', 'text-valign':'center', 'text-margin-y': -2, 'events': 'no' }},
         { selector: 'node.sel', style: { 'border-width': 5, 'border-color': '#000000', 'z-index': 999 }},
         { selector: 'node.neigh', style: { 'border-width': 2, 'border-color': '#9aa3b9' }},
         { selector: 'edge', style: { 'curve-style': 'bezier', 'target-arrow-shape': 'none', 'line-color': '#9aa3b2', 'width': 1.2, 'opacity': 0.9 }},
@@ -521,10 +543,21 @@
             return '#dddddd';
           },
           'border-width': 1.2, 'border-color': '#7a8094',
-          'width': ele => (ele.data('group') === 'Technique' ? 50 : (ele.data('group') === 'CVE' ? 40 : 46)),
-          'height': ele => (ele.data('group') === 'Technique' ? 50 : (ele.data('group') === 'CVE' ? 40 : 46)),
+          'width': ele => {
+            const g = ele.data('group');
+            if (g === 'Technique') return 50;
+            if (g === 'CVE') return 40;
+            return 46;
+          },
+          'height': ele => {
+            const g = ele.data('group');
+            if (g === 'Technique') return 50;
+            if (g === 'CVE') return 40;
+            return 46;
+          },
           'padding': 0
         }},
+        { selector: 'node[group="ScenarioEndpoint"]', style: { 'font-size': 16, 'width': 80, 'height': 46, 'shape': 'ellipse' }},
         { selector: 'node[group="KeyContact"]', style: {
           'shape': 'ellipse',
           'background-color': canvasColor,
@@ -545,8 +578,8 @@
           'label': '',
           'z-index': 1000
         }},
-        { selector: 'node[group="TechLabel"]', style: { 'background-opacity': 0, 'border-width': 0, 'label': 'data(label)', 'font-size': 11, 'color': muted, 'text-halign': 'center', 'text-valign':'center', 'events': 'no' }},
-        { selector: 'node[group="TacticGroup"]', style: { 'shape': 'round-rectangle', 'background-color':'#e7e9f0', 'background-opacity': 1, 'label': 'data(label)', 'text-valign': 'top', 'text-halign':'center', 'border-color': '#bfc6d8', 'border-width': 1, 'padding': 14, 'color': muted }},
+        { selector: 'node[group="TechLabel"]', style: { 'background-opacity': 0, 'border-width': 0, 'label': 'data(label)', 'font-size': 16, 'color': muted, 'text-halign': 'center', 'text-valign':'center', 'text-margin-y': -2, 'events': 'no' }},
+        { selector: 'node[group="TacticGroup"]', style: { 'shape': 'round-rectangle', 'background-color':'#e7e9f0', 'background-opacity': 1, 'label': 'data(label)', 'text-valign': 'top', 'text-halign':'center', 'border-color': '#bfc6d8', 'border-width': 1, 'padding': 14, 'color': muted, 'font-size': 20, 'text-margin-y': -15, 'text-wrap': 'wrap', 'text-max-width': 140 }},
         { selector: 'node.sel', style: { 'border-width': 5, 'border-color':'#000000', 'z-index': 999 }},
         { selector: 'node.neigh', style: { 'border-width': 2, 'border-color': '#9aa3b9' }},
         { selector: 'edge', style: { 'curve-style':'bezier','target-arrow-shape':'none','line-color':'#9aa3b2','width': 1.2,'opacity': 0.9 }},
@@ -580,14 +613,14 @@
         'height': 46,
         'padding': 0
       }},
-      { selector: 'node[group="TechLabel"]', style: { 'background-opacity': 0, 'border-width': 0, 'label': 'data(label)', 'font-size': 11, 'color': muted, 'text-halign': 'center', 'text-valign':'center', 'events': 'no' }},
+      { selector: 'node[group="TechLabel"]', style: { 'background-opacity': 0, 'border-width': 0, 'label': 'data(label)', 'font-size': 16, 'color': muted, 'text-halign': 'center', 'text-valign':'center', 'text-margin-y': -2, 'events': 'no' }},
       // Стиль карточек тактик
       { selector: 'node[group="TacticGroup"]', style: {
         'shape':'round-rectangle',
         'background-color': isLightMode ? '#3b6eea' : '#141939',
         'background-opacity': isLightMode ? 0.14 : 0.22,
         'label':'data(label)',
-        'text-valign':'top','text-halign':'center','border-color':'#3b4775','border-width':1,'padding':14
+        'text-valign':'top','text-halign':'center','border-color':'#3b4775','border-width':1,'padding':14,'font-size':20,'text-margin-y':-15,'text-wrap':'wrap','text-max-width':140
       }},
       { selector: 'node.sel', style: { 'border-width': 3, 'border-color': '#4f8cff', 'z-index': 999 }},
       { selector: 'node.neigh', style: { 'border-width': 2, 'border-color': '#3b4775' }},
@@ -1544,9 +1577,8 @@
     // Специальный порядок для узлов CVE: identifier, затем основные метрики (C/A/I, EPSS, ущерб/риск)
     if (group === 'CVE') {
       const priority = [
-        'identifier',
-        'cvss_C_score', 'cvss_I_score', 'cvss_A_score',
-        'cvss', 'epss', 'epss_norm',
+        'identifier', 'cvss',
+        'cvss_C_score', 'cvss_I_score', 'cvss_A_score', 'epss', 'epss_norm',
         'damage', 'risk',
         'damage_C', 'damage_I', 'damage_A',
         'risk_C', 'risk_I', 'risk_A',
@@ -2229,8 +2261,8 @@
     if (steps.length > 0) {
       const firstX = 0;
       const lastX = (steps.length - 1) * GAP_X;
-      elements.push({ data: { id: startId, label: 'Н', group: 'ScenarioEndpoint' }, position: { x: firstX - GAP_X * 0.7, y: TECH_Y } });
-      elements.push({ data: { id: endId, label: 'К', group: 'ScenarioEndpoint' }, position: { x: lastX + GAP_X, y: TECH_Y } });
+      elements.push({ data: { id: startId, label: 'Начало', group: 'ScenarioEndpoint' }, position: { x: firstX - GAP_X * 0.7, y: TECH_Y } });
+      elements.push({ data: { id: endId, label: 'Конец', group: 'ScenarioEndpoint' }, position: { x: lastX + GAP_X, y: TECH_Y } });
       const firstStep = steps[0];
       if (firstStep && firstStep.technique && firstStep.technique.id) {
         const firstTid = String(firstStep.technique.id);
@@ -2582,7 +2614,7 @@
 	    for (let ci=0; ci<cols.length; ci++) {
 	      const col = cols[ci]; const gid = `tg_${ci}`; groupIds.push(gid);
 	      const tgLabel = translateTacticName(col.tactic);
-	      elements.push({ data: { id: gid, label: String(tgLabel||''), group:'TacticGroup' }, position: { x: ci*COL_GAP, y: TOP_Y } });
+	      elements.push({ data: { id: gid, label: tacticLabelMultiline(tgLabel||''), group:'TacticGroup' }, position: { x: ci*COL_GAP, y: TOP_Y } });
 	      const items = col.techniques || [];
 	      for (let ri=0; ri<items.length; ri++) { const st=items[ri]; const t=st.technique; if (!t||!t.id) continue; const x=ci*COL_GAP; const y=CENTER_Y + (ri - (items.length-1)/2)*ROW_GAP; elements.push({ data: { id:String(t.id), label:'T', group:'Technique', raw:t, parent: gid }, position:{x,y} }); }
 	    }
@@ -2592,8 +2624,8 @@
 	      const endId = 'pg_end';
 	      const firstX = 0;
 	      const lastX = (groupIds.length - 1) * COL_GAP;
-	      elements.push({ data: { id: startId, label: 'Н', group:'ScenarioEndpoint' }, position: { x: firstX - COL_GAP * 0.7, y: CENTER_Y } });
-	      elements.push({ data: { id: endId, label: 'К', group:'ScenarioEndpoint' }, position: { x: lastX + COL_GAP, y: CENTER_Y } });
+	      elements.push({ data: { id: startId, label: 'Начало', group:'ScenarioEndpoint' }, position: { x: firstX - COL_GAP * 0.7, y: CENTER_Y } });
+	      elements.push({ data: { id: endId, label: 'Конец', group:'ScenarioEndpoint' }, position: { x: lastX + COL_GAP, y: CENTER_Y } });
 	      const firstGid = groupIds[0];
 	      const lastGid = groupIds[groupIds.length - 1];
 	      elements.push({ data: { id: `sc_group_start_${firstGid}`, source: startId, target: firstGid, type:'SC_GROUP_LINK' } });

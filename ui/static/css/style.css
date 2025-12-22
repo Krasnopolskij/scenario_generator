@@ -313,7 +313,7 @@ button.selected { background: var(--ok); }
 .modal-body { color: var(--muted); margin-bottom: 14px; }
 .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
 
-.modal.modal-landscape { width: min(1400px, 90vw); max-width: 1400px; }
+.modal.modal-landscape { width: min(1450px, 96vw); max-width: 1450px; }
 .landscape-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
 .landscape-toolbar label { margin: 0; color: var(--text); }
 .landscape-toolbar select { min-width: 200px; }
@@ -408,7 +408,7 @@ button.selected { background: var(--ok); }
 /* Страница визуализации графа */
 .page-graph main {
   display: grid !important;
-  grid-template-columns: 560px minmax(0,1fr) 420px !important;
+  grid-template-columns: 560px minmax(0,1fr) 500px !important;
   grid-template-rows: 1fr !important;
   gap: 20px;
   align-items: stretch;
@@ -462,7 +462,7 @@ button.selected { background: var(--ok); }
 .page-graph .inspector { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
 .page-graph .inspector h2 { margin: 0 0 10px 0; font-size: 16px; }
 .page-graph .kv { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size: 12.5px; line-height: 1.5; }
-.page-graph .kv .row { display:grid; grid-template-columns: 160px 1fr; gap:8px; padding:4px 0; border-bottom: 1px solid var(--line-soft); }
+.page-graph .kv .row { display:grid; grid-template-columns: 200px 1fr; gap:8px; padding:4px 0; border-bottom: 1px solid var(--line-soft); }
 .page-graph .kv .row:last-child { border-bottom: 0; }
 .page-graph .kv .k { color: var(--muted); }
 .page-graph .kv .v { color: var(--text); word-break: break-word; }

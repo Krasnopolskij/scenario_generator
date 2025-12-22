@@ -14,6 +14,7 @@
   const METRIC_DIGITS = {
     risk: 5, risk_C: 5, risk_I: 5, risk_A: 5,
   };
+  const AXIS_PADDING = 0.6;
 
   const SEP = '<span style="display:block;border-top:2px solid rgba(255,255,255,0.45);margin:6px 0;"></span>';
   const DEFAULT_CAMERA = { eye: { x: 1.45, y: 1.65, z: 1.05 } };
@@ -167,7 +168,7 @@
   }
 
   function buildLayout(params) {
-    const { xCount, xLabels, yLabels, metric, colors, showTactics, showCves, camera } = params;
+    const { xCount, xLabels, yLabels, metric, colors, showTactics, showCves, camera, ranges } = params;
     const xMax = Math.max(0, xCount - 1);
     const yMax = Math.max(0, yLabels.length - 1);
     const ratioX = Math.min(2.0, Math.max(1, (xCount || 1) / Math.max(1, yLabels.length) * 0.9));
@@ -177,6 +178,9 @@
       const label = xLabels && xLabels[idx];
       return label ? String(label) : '';
     }) : xTicks.map(() => '');
+    const xRange = ranges && ranges.x ? ranges.x : { min: -0.6, max: xMax + 0.6 };
+    const yRange = ranges && ranges.y ? ranges.y : { min: -0.6, max: yMax + 0.6 };
+    const zRange = ranges && ranges.z ? ranges.z : null;
     return {
       paper_bgcolor: colors.paper,
       plot_bgcolor: colors.paper,
@@ -191,11 +195,12 @@
           ticktext: xTickText,
           showticklabels: showXLabels,
           ticks: showXLabels ? 'outside' : '',
-          tickangle: showXLabels ? 50 : 0,
+          tickangle: showXLabels ? -90 : 0,
           tickfont: showXLabels ? { size: 11 } : undefined,
           showgrid: true,
-          range: [-0.6, xMax + 0.6],
+          range: [xRange.min, xRange.max],
           gridcolor: colors.grid,
+          gridwidth: 2,
           zerolinecolor: colors.grid,
           showspikes: false,
         },
@@ -208,8 +213,9 @@
           tickangle: -25,
           ticklen: 16,
           ticks: 'outside',
-          range: [-0.6, yMax + 0.6],
+          range: [yRange.min, yRange.max],
           gridcolor: colors.grid,
+          gridwidth: 2,
           zerolinecolor: colors.grid,
           showgrid: true,
           showspikes: false,
@@ -221,15 +227,18 @@
           ticks: '',
           showticklabels: false,
           showgrid: true,
-          range: [-0.6, yMax + 0.6],
+          range: [yRange.min, yRange.max],
           gridcolor: colors.grid,
+          gridwidth: 2,
           zerolinecolor: colors.grid,
           showspikes: false,
         },
         zaxis: {
           title: METRIC_TITLES[metric] || 'Значение',
           gridcolor: colors.grid,
+          gridwidth: 2,
           zerolinecolor: colors.grid,
+          range: zRange ? [zRange.min, zRange.max] : undefined,
           showspikes: false,
         },
         camera: camera || { eye: { x: 1.6, y: 1.3, z: 1.3 } },
@@ -241,12 +250,126 @@
     };
   }
 
+  function buildAxisTraces(ranges, colors) {
+    const axisColor = colors.axis || '#000';
+    const textFont = { size: 12, color: '#000' };
+    const lineWidth = 5;
+    const opacity = 1;
+    const arrowSize = (len) => {
+      if (!Number.isFinite(len) || len <= 0) return 0.18;
+      return Math.min(0.6, Math.max(0.18, len * 0.08));
+    };
+    const xr = ranges.x || { min: -0.6, max: 1 };
+    const yr = ranges.y || { min: -0.6, max: 1 };
+    const zr = ranges.z || { min: 0, max: 1 };
+    const xLen = xr.max - xr.min;
+    const yLen = yr.max - yr.min;
+    const zLen = zr.max - zr.min;
+    const traces = [
+      {
+        type: 'scatter3d',
+        mode: 'lines+text',
+        x: [xr.min, xr.max],
+        y: [0, 0],
+        z: [0, 0],
+        line: { color: axisColor, width: lineWidth },
+        text: ['', 'x'],
+        textposition: 'top center',
+        textfont: { ...textFont, size: 13 },
+        hoverinfo: 'skip',
+        showlegend: false,
+        opacity,
+      },
+      {
+        type: 'scatter3d',
+        mode: 'lines+text',
+        x: [0, 0],
+        y: [yr.min, yr.max],
+        z: [0, 0],
+        line: { color: axisColor, width: lineWidth },
+        text: ['', 'y'],
+        textposition: 'top center',
+        textfont: { ...textFont, size: 13 },
+        hoverinfo: 'skip',
+        showlegend: false,
+        opacity,
+      },
+      {
+        type: 'scatter3d',
+        mode: 'lines+text',
+        x: [0, 0],
+        y: [0, 0],
+        z: [zr.min, zr.max],
+        line: { color: axisColor, width: lineWidth },
+        text: ['', 'z'],
+        textposition: 'top center',
+        textfont: { ...textFont, size: 13 },
+        hoverinfo: 'skip',
+        showlegend: false,
+        opacity,
+      },
+      {
+        type: 'cone',
+        x: [xr.max],
+        y: [0],
+        z: [0],
+        u: [1],
+        v: [0],
+        w: [0],
+        sizemode: 'absolute',
+        sizeref: arrowSize(xLen),
+        anchor: 'tip',
+        colorscale: [[0, axisColor], [1, axisColor]],
+        showscale: false,
+        hoverinfo: 'skip',
+        name: '',
+        opacity,
+      },
+      {
+        type: 'cone',
+        x: [0],
+        y: [yr.max],
+        z: [0],
+        u: [0],
+        v: [1],
+        w: [0],
+        sizemode: 'absolute',
+        sizeref: arrowSize(yLen),
+        anchor: 'tip',
+        colorscale: [[0, axisColor], [1, axisColor]],
+        showscale: false,
+        hoverinfo: 'skip',
+        name: '',
+        opacity,
+      },
+      {
+        type: 'cone',
+        x: [0],
+        y: [0],
+        z: [zr.max],
+        u: [0],
+        v: [0],
+        w: [1],
+        sizemode: 'absolute',
+        sizeref: arrowSize(zLen),
+        anchor: 'tip',
+        colorscale: [[0, axisColor], [1, axisColor]],
+        showscale: false,
+        hoverinfo: 'skip',
+        name: '',
+        opacity,
+      },
+    ];
+    return traces;
+  }
+
   function create(opts) {
     const {
       backdrop,
       plotEl,
       metricSelect,
       exportBtn,
+      exportCsvBtn,
       closeBtn,
       noticeEl,
       translateTactic,
@@ -326,6 +449,12 @@
       const values = top.map((t) => safeNum(t[currentMetric]));
       const cveLabels = top.map((t) => t.id);
       const maxVal = Math.max(...values, 0);
+      const xMaxIdx = Math.max(0, top.length - 1);
+      const yMaxIdx = Math.max(0, tactics.length - 1);
+      const xRange = { min: -AXIS_PADDING, max: xMaxIdx + AXIS_PADDING + 0.4 };
+      const yRange = { min: -AXIS_PADDING, max: yMaxIdx + AXIS_PADDING + 0.4 };
+      const zMax = Math.max(maxVal * 1.1 + 0.05, 1);
+      const zRange = { min: 0, max: zMax };
       const colors = getColors ? getColors() : {
         paper: '#0f1326',
         canvas: '#0b1023',
@@ -350,6 +479,9 @@
         faces.forEach(f => traces.push(f));
       });
 
+      const axisTraces = buildAxisTraces({ x: xRange, y: yRange, z: zRange }, { ...colors, axis: colors.axis || colors.grid });
+      axisTraces.forEach((t) => traces.push(t));
+
       const layout = buildLayout({
         xCount: top.length,
         xLabels: cveLabels,
@@ -365,6 +497,7 @@
           hoverBg: colors.hoverBg || 'rgba(16,20,37,0.92)',
           hoverText: colors.hoverText || '#e5e7ef',
         },
+        ranges: { x: xRange, y: yRange, z: zRange },
       });
 
       Plotly.react(plotEl, traces, layout, { displaylogo: false, responsive: true, modeBarButtonsToRemove: ['toImage'] })
@@ -397,6 +530,50 @@
       }
     }
 
+    function handleExportCsv() {
+      if (!hasData()) {
+        showNotice('Сначала нужно сгенерировать сценарий');
+        return;
+      }
+      const top = pickTop(collectPrimaryCves(megaData, translateTactic), currentMetric);
+      if (!top.length) {
+        showNotice('Нет данных для выбранной метрики');
+        return;
+      }
+      const sep = ';';
+      const metricLabel = METRIC_TITLES[currentMetric] || (currentMetric || 'Метрика');
+      const metricDigits = Number.isFinite(METRIC_DIGITS[currentMetric])
+        ? METRIC_DIGITS[currentMetric]
+        : (String(currentMetric || '').startsWith('risk') ? 5 : 4);
+      const formatNum = (v, digits = 4) => fmt(v, digits).replace('.', ',');
+      const esc = (v) => `"${String(v).replace(/"/g, '""')}"`;
+      const rows = [];
+      rows.push(['CVE', 'Тактика', 'Порядок тактики', 'CVSS', 'EPSS', 'Вероятность', 'Ущерб', 'Риск', metricLabel].join(sep));
+      top.forEach((item) => {
+        rows.push([
+          esc(item.id),
+          esc(formatTacticLabel(item.tactic, translateTactic)),
+          String(safeNum(item.tacticOrder)),
+          formatNum(item.cvss, 2),
+          formatNum(item.epss, 4),
+          formatNum(item.epss_norm, 4),
+          formatNum(item.damage, 4),
+          formatNum(item.risk, 5),
+          formatNum(item[currentMetric], metricDigits),
+        ].join(sep));
+      });
+      const csv = rows.join('\n');
+      const baseName = (buildFileName ? buildFileName() : 'landscape.png').replace(/\.png$/i, '') || 'landscape';
+      const fname = `${baseName}_data.csv`;
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fname;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
     function open() {
       showNotice('Загрузка...');
       openBackdrop();
@@ -420,6 +597,7 @@
       });
     }
     if (exportBtn) exportBtn.addEventListener('click', handleExport);
+    if (exportCsvBtn) exportCsvBtn.addEventListener('click', handleExportCsv);
     if (closeBtn) closeBtn.addEventListener('click', closeBackdrop);
     if (backdrop) {
       backdrop.addEventListener('click', (e) => { if (e.target === backdrop) closeBackdrop(); });
