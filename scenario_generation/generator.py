@@ -1,12 +1,14 @@
 from __future__ import annotations
 from typing import Any, Dict, List, Literal, Optional, Tuple, Set
 from collections import defaultdict
+import logging
 from py2neo import Graph
 import heapq
 from scenario_generation.metrics import enrich_cves_with_scores_tactic, compute_scenario_risk
 
 # Максимум сценариев возвращаем из API
 MAX_SCENARIOS: int = 30
+QUERY_TIMEOUT = 10
 
 # Тактики ATT&CK, которые исключаем из построения сценариев
 EXCLUDED_TACTICS = {
@@ -16,6 +18,8 @@ EXCLUDED_TACTICS = {
     "command-and-control",
     "collection"
 }
+
+logger = logging.getLogger("scenario.scenarios")
 
 
 def _node_to_json(n) -> Dict[str, Any]:
@@ -273,14 +277,14 @@ def _collect_evidence(
                 rec["capecs"].append(cj)
 
     # Выполняем прямой запрос
-    for row in graph.run(q_direct, obj=obj_uri):
+    for row in graph.run(q_direct, obj=obj_uri, timeout=QUERY_TIMEOUT):
         t = row.get("t") if hasattr(row, "get") else row[0]
         cve = row.get("cve") if hasattr(row, "get") else row[1]
         w = row.get("w") if hasattr(row, "get") else row[2]
         add_evidence(t, cve=cve, w=w, caps=[])
 
     # Через CAPEC
-    for row in graph.run(q_capec, obj=obj_uri, relaxed=bool(relaxed)):
+    for row in graph.run(q_capec, obj=obj_uri, relaxed=bool(relaxed), timeout=QUERY_TIMEOUT):
         t = row.get("t") if hasattr(row, "get") else row[0]
         cve = row.get("cve") if hasattr(row, "get") else row[1]
         w = row.get("w") if hasattr(row, "get") else row[2]
@@ -298,6 +302,13 @@ def _collect_evidence(
         if not entries[tid]["cves"]:
             entries.pop(tid, None)
 
+    logger.info(
+        "evidence collected obj=%s relaxed=%s use_gnn=%s techniques=%s",
+        obj_uri,
+        relaxed,
+        use_gnn,
+        len(entries),
+    )
     return entries
 
 
@@ -426,6 +437,7 @@ def generate_scenarios(
     max_per_tactic: int = 3,
     max_scenarios: Optional[int] = None,
 ) -> Dict[str, Any]:
+    logger.info("generate scenarios obj=%s mode=%s max_per_tactic=%s", obj_uri, mode, max_per_tactic)
     relaxed = mode == "relaxed"
     max_scen = int(MAX_SCENARIOS if max_scenarios is None else max_scenarios)
 
@@ -505,6 +517,13 @@ def generate_scenarios(
     for idx, scen in enumerate(scenarios):
         scen["id"] = f"S{idx + 1}"
 
+    logger.info(
+        "scenarios built obj=%s mode=%s scenarios=%s tactics=%s",
+        obj_uri,
+        mode,
+        len(scenarios),
+        len(buckets),
+    )
     return {
         "cpe": obj_uri,
         "mode": mode,

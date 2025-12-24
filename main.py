@@ -1,3 +1,5 @@
+import logging
+from logging.config import dictConfig
 import os
 import socket
 import select
@@ -5,10 +7,13 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
+from http import HTTPStatus
 from pathlib import Path
 from urllib.parse import urlparse
 from typing import Dict, List, Optional, Tuple
 
+from uvicorn.logging import DefaultFormatter, AccessFormatter
 from fastapi import FastAPI, Request, UploadFile, File
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse, Response, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -29,8 +34,58 @@ from targets import (
 )
 import datetime as dt
 
+load_dotenv()
+
+
+def setup_logging():
+    level_name = os.getenv("LOG_LEVEL", "INFO").upper()
+    uvicorn_level = os.getenv("UVICORN_LOG_LEVEL", level_name)
+    access_level = os.getenv("UVICORN_ACCESS_LEVEL", uvicorn_level)
+    dictConfig(
+        {
+            "version": 1,
+            "disable_existing_loggers": False,
+            "formatters": {
+                "default": {
+                    "()": DefaultFormatter,
+                    "fmt": "%(levelprefix)s %(asctime)s [%(name)s] %(message)s",
+                    "use_colors": True,
+                },
+                "access": {
+                    "()": AccessFormatter,
+                    "fmt": '%(levelprefix)s %(client_addr)s [%(name)s] "%(request_line)s" %(status_code)s',
+                    "use_colors": True,
+                },
+            },
+            "handlers": {
+                "console": {
+                    "class": "logging.StreamHandler",
+                    "formatter": "default",
+                    "stream": "ext://sys.stdout",
+                },
+                "access": {
+                    "class": "logging.StreamHandler",
+                    "formatter": "access",
+                    "stream": "ext://sys.stdout",
+                },
+            },
+            "root": {"handlers": ["console"], "level": level_name},
+            "loggers": {
+                "uvicorn": {"handlers": ["console"], "level": uvicorn_level, "propagate": False},
+                "uvicorn.error": {"handlers": ["console"], "level": uvicorn_level, "propagate": False},
+                "uvicorn.access": {"handlers": ["access"], "level": access_level, "propagate": False},
+            },
+        }
+    )
+
+
 ROOT = Path(__file__).parent.resolve()
-load_dotenv() 
+setup_logging()
+
+logger = logging.getLogger("scenario.app")
+graph_logger = logging.getLogger("scenario.graph")
+runner_logger = logging.getLogger("scenario.runner")
+logger.info("logging initialized level=%s", logging.getLevelName(logger.getEffectiveLevel()))
 
 app = FastAPI(title="Scenario Generator UI")
 
@@ -51,6 +106,49 @@ class CacheControlMiddleware(BaseHTTPMiddleware):
         return response
 
 app.add_middleware(CacheControlMiddleware)
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    request_id = request.headers.get("x-request-id") or uuid.uuid4().hex
+    start = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        logger.exception(
+            "request failed %s %s client=%s",
+            request.method,
+            request.url.path,
+            request.client.host if request.client else "-",
+        )
+        raise
+    duration_ms = (time.perf_counter() - start) * 1000.0
+    try:
+        status_int = int(getattr(response, "status_code", 0) or 0)
+    except Exception:
+        status_int = 0
+    try:
+        reason = HTTPStatus(status_int).phrase
+    except Exception:
+        reason = "unknown"
+    if 200 <= status_int < 300:
+        log_fn = logger.info
+    elif 300 <= status_int < 400:
+        log_fn = logger.info
+    else:
+        log_fn = logger.error
+    log_fn(
+        "request %s %s status=%s reason=%s duration_ms=%.2f client=%s",
+        request.method,
+        request.url.path,
+        status_int or "unknown",
+        reason,
+        duration_ms,
+        request.client.host if request.client else "-",
+    )
+    response.headers["X-Request-Id"] = request_id
+    return response
+
 
 @app.get("/")
 def index() -> FileResponse:
@@ -89,6 +187,7 @@ RUN_KINDS: Dict[str, str] = {}
 
 # Neo4j connection (cached)
 _GRAPH: Optional[Graph] = None
+_GRAPH_QUERY_TIMEOUT = 10
 
 def get_graph() -> Graph:
     global _GRAPH
@@ -99,8 +198,15 @@ def get_graph() -> Graph:
     neo4j_password = os.getenv("NEO4J_PASSWORD")
     neo4j_db = os.getenv("NEO4J_DATABASE", "neo4j")
     if not all([neo4j_uri, neo4j_user, neo4j_password]):
+        graph_logger.error("NEO4J env vars are missing")
         raise RuntimeError("Отсутствуют NEO4J_URI/NEO4J_USER/NEO4J_PASSWORD. Укажите их в .env")
-    _GRAPH = Graph(neo4j_uri, auth=(neo4j_user, neo4j_password), name=neo4j_db)
+    graph_logger.info("connecting to Neo4j uri=%s db=%s", neo4j_uri, neo4j_db)
+    try:
+        _GRAPH = Graph(neo4j_uri, auth=(neo4j_user, neo4j_password), name=neo4j_db)
+    except Exception:
+        graph_logger.exception("failed to connect to Neo4j uri=%s db=%s", neo4j_uri, neo4j_db)
+        raise
+    graph_logger.info("connected to Neo4j uri=%s db=%s", neo4j_uri, neo4j_db)
     return _GRAPH
 
 
@@ -110,6 +216,11 @@ def _cleanup_runs_locked():
     for rid in finished:
         RUNS.pop(rid, None)
         RUN_KINDS.pop(rid, None)
+
+
+def _reset_graph():
+    global _GRAPH
+    _GRAPH = None
 
 
 def _active_run_of_kind(kind: str, exclude_run_id: Optional[str] = None) -> Optional[str]:
@@ -195,7 +306,16 @@ def api_graph_subgraph(cpe: str, mode: str = "full", limit: int = 1000):
         )
         params = {"cpe": cpe_in, "limit": limit}
 
-    rows = g.run(cypher, **params)
+    try:
+        rows = g.run(cypher, timeout=_GRAPH_QUERY_TIMEOUT, **params)
+    except Exception as e:
+        graph_logger.exception(
+            "graph subgraph failed cpe=%s mode=%s limit=%s err=%s", cpe_in, mode, limit, e
+        )
+        _reset_graph()
+        return JSONResponse(
+            {"error": "Neo4j недоступен", "details": str(e)}, status_code=503
+        )
 
     nodes = {}
     edges = {}
@@ -264,7 +384,17 @@ def api_graph_subgraph(cpe: str, mode: str = "full", limit: int = 1000):
             "MATCH (cap)-[r:CAPEC_TO_TECHNIQUE_PRED]->(t:Technique) "
             "RETURN DISTINCT r, cap, t LIMIT $limit"
         )
-        for row in g.run(pred_cypher, cpe=cpe_in, limit=limit):
+        try:
+            pred_rows = g.run(pred_cypher, cpe=cpe_in, limit=limit, timeout=_GRAPH_QUERY_TIMEOUT)
+        except Exception as e:
+            graph_logger.exception(
+                "graph subgraph pred failed cpe=%s mode=%s limit=%s err=%s", cpe_in, mode, limit, e
+            )
+            _reset_graph()
+            return JSONResponse(
+                {"error": "Neo4j недоступен", "details": str(e)}, status_code=503
+            )
+        for row in pred_rows:
             try:
                 r = row.get("r") if hasattr(row, "get") else row[0]
                 cap = row.get("cap") if hasattr(row, "get") else row[1]
@@ -348,6 +478,8 @@ def stream_process(
     extra_env: Optional[Dict[str, str]] = None,
     kind: Optional[str] = None,
 ):
+    cmd_display = " ".join(str(x) for x in cmd)
+    runner_logger.info("spawn process run_id=%s kind=%s cmd=%s", run_id, kind or "-", cmd_display)
     # POSIX: используем PTY, чтобы дочерний процесс видел TTY и tqdm печатал с \r
     if os.name != "nt":
         import pty
@@ -429,6 +561,8 @@ def stream_process(
             with RUNS_LOCK:
                 RUNS.pop(run_id, None)
                 RUN_KINDS.pop(run_id, None)
+            level = logging.INFO if code == 0 else logging.ERROR
+            runner_logger.log(level, "process finished run_id=%s kind=%s code=%s", run_id, kind or "-", code)
             yield f"\n[exit code: {code}]\n"
     else:
         # Windows
@@ -455,6 +589,8 @@ def stream_process(
             with RUNS_LOCK:
                 RUNS.pop(run_id, None)
                 RUN_KINDS.pop(run_id, None)
+            level = logging.INFO if code == 0 else logging.ERROR
+            runner_logger.log(level, "process finished run_id=%s kind=%s code=%s", run_id, kind or "-", code)
             yield f"\n[exit code: {code}]\n"
 
 
@@ -463,6 +599,7 @@ async def run_loader(request: Request):
     load_dotenv()
     allow_loader = os.getenv("ALLOW_LOADER_CONTROL", "false").lower() in {"1", "true", "yes"}
     if not allow_loader:
+        logger.warning("loader control denied by config")
         return JSONResponse(
             {"error": "Управление загрузчиками отключено администатором"},
             status_code=403,
@@ -518,6 +655,17 @@ async def run_loader(request: Request):
                 status_code=409,
             )
 
+    cmd_display = " ".join(cmd)
+    logger.info(
+        "start loader run_id=%s only=%s skip=%s cve_from_year=%s check_hash=%s cmd=%s",
+        run_id,
+        only,
+        skip,
+        cve_from_year,
+        check_hash,
+        cmd_display,
+    )
+
     # В ответ добавим команду и run_id
     def generator():
         yield f"$ {' '.join(cmd)}\n[run_id: {run_id}]\n\n"
@@ -546,6 +694,7 @@ async def run_loader(request: Request):
 async def run_refresh_epss_kev(request: Request):
     allow_update = os.getenv("ALLOW_UPDATE_CONTROL", "false").lower() in {"1", "true", "yes"}
     if not allow_update:
+        logger.warning("EPSS/KEV control denied by config")
         return JSONResponse(
             {"error": "Управление обновлениями EPSS и CISA KEV отключено администатором"},
             status_code=403,
@@ -576,6 +725,7 @@ async def run_refresh_epss_kev(request: Request):
             )
 
     cmd = build_refresh_command()
+    logger.info("start refresh EPSS/KEV run_id=%s cmd=%s", run_id, " ".join(cmd))
 
     def generator():
         yield f"$ {' '.join(cmd)}\n[run_id: {run_id}]\n\n"
@@ -600,6 +750,7 @@ async def run_refresh_epss_kev(request: Request):
 async def run_gnn(request: Request):
     allow_gnn = os.getenv("ALLOW_GNN_CONTROL", "false").lower() in {"1", "true", "yes"}
     if not allow_gnn:
+        logger.warning("GNN control denied by config")
         return JSONResponse(
             {"error": "Управление GNN отключено администатором"},
             status_code=403,
@@ -647,6 +798,18 @@ async def run_gnn(request: Request):
         mode=mode,
         dry_run=dry_run,
     )
+    logger.info(
+        "start gnn run_id=%s epochs=%s top_k=%s min_score=%s sentence_model=%s device=%s mode=%s dry_run=%s cmd=%s",
+        run_id,
+        epochs,
+        top_k,
+        min_score,
+        sentence_model,
+        device,
+        mode,
+        dry_run,
+        " ".join(cmd),
+    )
 
     def generator():
         yield f"$ {' '.join(cmd)}\n[run_id: {run_id}]\n\n"
@@ -671,6 +834,7 @@ async def run_gnn(request: Request):
 def clear_gnn_predictions():
     allow_gnn = os.getenv("ALLOW_GNN_CONTROL", "false").lower() in {"1", "true", "yes"}
     if not allow_gnn:
+        logger.warning("GNN clear request denied by config")
         return JSONResponse(
             {"error": "Управление GNN отключено администатором"},
             status_code=403,
@@ -691,6 +855,7 @@ def clear_gnn_predictions():
     try:
         g.run(cypher)
     except Exception as e:
+        logger.exception("failed to clear GNN predictions: %s", e)
         return JSONResponse(
             {
                 "status": "error",
@@ -698,6 +863,7 @@ def clear_gnn_predictions():
             },
             status_code=500,
         )
+    logger.info("cleared GNN predictions")
     return JSONResponse({"status": "ok"})
 
 
@@ -715,6 +881,7 @@ async def stop_run(request: Request):
         _cleanup_runs_locked()
         proc = RUNS.get(run_id)
     if not proc or proc.poll() is not None:
+        runner_logger.info("stop requested for missing run_id=%s", run_id)
         return JSONResponse({"status": "not-found-or-exited", "run_id": run_id})
 
     # Пытаемся мягко остановить
@@ -731,6 +898,7 @@ async def stop_run(request: Request):
         with RUNS_LOCK:
             RUNS.pop(run_id, None)
             RUN_KINDS.pop(run_id, None)
+    runner_logger.info("stopped run_id=%s", run_id)
     return JSONResponse({"status": "stopped", "run_id": run_id})
 
 
@@ -742,6 +910,7 @@ def health():
     host = parsed.hostname or ""
     port = parsed.port
     if not host:
+        logger.error("health: NEO4J_URI missing host")
         return JSONResponse({"status": "db_unavailable", "error": "Некорректный NEO4J_URI"}, status_code=503)
     if port is None:
         port = 7687 if (parsed.scheme or "").startswith("bolt") else 7474
@@ -749,6 +918,7 @@ def health():
         with socket.create_connection((host, port), timeout=3):
             pass
     except Exception as e:
+        logger.error("health: socket error host=%s port=%s err=%s", host, port, e)
         return JSONResponse(
             {"status": "db_unavailable", "error": f"socket: {e}"},
             status_code=503,
@@ -759,6 +929,7 @@ def health():
         # Лёгкий пинг: проверяем, что сессия жива, без обхода графа
         g.run("RETURN 1", timeout=4).evaluate()
     except Exception as e:
+        logger.error("health: graph ping failed err=%s", e)
         return JSONResponse(
             {"status": "db_unavailable", "error": str(e)},
             status_code=503,
@@ -820,6 +991,7 @@ def api_cpe_search(part: str, vendor: str = "", product: str = "", version: str 
 @app.post("/api/targets/parse")
 async def api_targets_parse(file: UploadFile = File(...)):
     data = await file.read()
+    logger.info("targets parse filename=%s size=%s", getattr(file, "filename", None), len(data or b""))
     cves = parse_cves_from_xml_bytes(data)
     if not cves:
         return JSONResponse({"error": "Не удалось найти CVE в файле"}, status_code=400)
@@ -853,6 +1025,16 @@ async def api_targets_check(request: Request):
 
     found_ids = check_cves_in_db(g, cves)
     missing = max(0, len(cves) - len(found_ids))
+    logger.info(
+        "targets check name=%s resolved=%s generated=%s total=%s found=%s missing=%s exists=%s",
+        name,
+        resolved_name,
+        generated,
+        len(cves),
+        len(found_ids),
+        missing,
+        exists,
+    )
 
     return {
         "name": resolved_name,
@@ -903,6 +1085,17 @@ async def api_targets_create(request: Request):
         missing_count=missing,
         found_ids=found_ids,
     )
+    logger.info(
+        "targets create name=%s resolved=%s generated=%s total=%s found=%s missing=%s created=%s updated=%s",
+        name,
+        resolved_name,
+        generated,
+        len(cves),
+        len(found_ids),
+        missing,
+        bool(res.get("created")),
+        bool(res.get("updated")),
+    )
 
     return {
         "name": resolved_name,
@@ -922,6 +1115,7 @@ def api_targets_search(q: str = "", limit: int = 50, offset: int = 0):
     limit = min(max(int(limit or 50), 1), 200)
     offset = max(0, int(offset or 0))
     q = (q or "").strip()
+    logger.info("targets search q=%s limit=%s offset=%s", q, limit, offset)
     rows = g.run(
         """
         MATCH (t:Target)
@@ -980,9 +1174,11 @@ async def api_targets_cleanup(request: Request):
             cutoff=cutoff,
         ).data()
     else:
+        logger.warning("targets cleanup invalid mode=%s", mode)
         return JSONResponse({"error": "Некорректный режим очистки"}, status_code=400)
 
     deleted = (rows or [{}])[0].get("deleted") or 0
+    logger.info("targets cleanup mode=%s days=%s deleted=%s", mode, days, deleted)
     return {"deleted": int(deleted)}
 
 
@@ -1005,6 +1201,7 @@ def api_scenarios(cpe: str, mode: str = "strict", max_per_tactic: int = 3):
     except Exception:
         mpt = 3
 
+    logger.info("scenarios request cpe=%s mode=%s max_per_tactic=%s", cpe_in, m, mpt)
     data = generate_scenarios(g, cpe_in, mode=m, max_per_tactic=mpt)
     return data
 
@@ -1030,6 +1227,7 @@ def api_export(cpe: str, mode: str = "strict", max_per_tactic: int = 3):
     except Exception:
         mpt = 3
 
+    logger.info("export request cpe=%s mode=%s max_per_tactic=%s", cpe_in, m, mpt)
     data = generate_scenarios(g, cpe_in, mode=m, max_per_tactic=mpt)
     mega = list(data.get("mega") or [])
 

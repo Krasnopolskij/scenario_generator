@@ -18,7 +18,6 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
-      #network: host
     container_name: scenario_app
     depends_on:
       - neo4j

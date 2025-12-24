@@ -3,6 +3,7 @@ import argparse
 import time
 import os
 import datetime as dt
+import logging
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -14,6 +15,15 @@ from data_collection import load_technique as techniques
 from data_collection import load_capec as capec
 from data_collection import load_cwe as cwe
 from data_collection import load_cve as cve
+
+
+def setup_logging():
+    level_name = os.getenv("LOG_LEVEL", "INFO").upper()
+    logging.basicConfig(
+        level=level_name,
+        format="%(levelname)s %(asctime)s %(name)s %(message)s",
+        stream=sys.stdout,
+    )
 
 
 def run_sequence(sequence):
@@ -55,6 +65,8 @@ def parse_args():
 
 def main():
     load_dotenv()
+    setup_logging()
+    logger = logging.getLogger("loader")
 
     default_sequence = ["techniques", "capec", "cwe", "cve"]
     args = parse_args()
@@ -97,10 +109,9 @@ def main():
 
         run_sequence(sequence)
     except Exception as e:
-        print(f"Ошибка: {e}")
+        logger.exception("loader failed: %s", e)
         sys.exit(1)
 
 
 if __name__ == "__main__":
     main()
-
