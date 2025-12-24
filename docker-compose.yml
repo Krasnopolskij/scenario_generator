@@ -7,6 +7,14 @@ services:
       # Учётные данные БД, задать в .env (NEO4J_AUTH=user/password)
       - NEO4J_AUTH=${NEO4J_AUTH}
       - NEO4J_dbms_default__database=${NEO4J_DATABASE}
+      # Настройки логирования Neo4j
+      - NEO4J_dbms_logs_debug_rotation_size=20m
+      - NEO4J_dbms_logs_debug_rotation_keep_number=5
+      - NEO4J_dbms_logs_query_enabled=true
+      - NEO4J_dbms_logs_query_threshold=2s
+      - NEO4J_dbms_logs_query_rotation_size=20m
+      - NEO4J_dbms_logs_query_rotation_keep_number=5
+      - NEO4J_dbms_logs_query_parameter_logging_enabled=true
     ports:
       - "7474:7474"   # Веб-интерфейс Neo4j (HTTP)
       - "7687:7687"   # Протокол Bolt
@@ -18,6 +26,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
+    command: /bin/sh -c "uvicorn main:app --host 0.0.0.0 --port 8000 2>&1 | tee /logs/app/app.log"
     container_name: scenario_app
     depends_on:
       - neo4j
@@ -26,8 +35,10 @@ services:
     # Переменные окружения для приложения читаются из .env в корне автоматически
     env_file:
       - .env
+    volumes:
+      - app_logs:/logs/app
 
 volumes:
   neo4j_data:
   neo4j_logs:
-
+  app_logs:
