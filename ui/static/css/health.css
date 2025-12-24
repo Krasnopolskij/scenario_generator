@@ -1,0 +1,32 @@
+:root {
+  --health-error: var(--error);
+  --health-ok: var(--ok);
+}
+
+.health-banner {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: 12px;
+  padding: 12px 16px;
+  background: var(--health-error);
+  color: #fff;
+  font-weight: 600;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  z-index: 1300;
+  transform: translateY(140%);
+  opacity: 0;
+  transition: transform 0.28s ease, opacity 0.28s ease, background-color 0.2s ease;
+  pointer-events: none;
+  text-align: center;
+}
+
+.health-banner.visible {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.health-banner.is-ok {
+  background: var(--health-ok);
+}

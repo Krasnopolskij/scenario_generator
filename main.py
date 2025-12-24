@@ -1,15 +1,18 @@
 import os
+import socket
 import select
 import subprocess
 import sys
 import threading
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 from typing import Dict, List, Optional, Tuple
 
 from fastapi import FastAPI, Request, UploadFile, File
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse, Response, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 from py2neo import Graph
 from dotenv import load_dotenv
 from cpe import search as cpe_search
@@ -35,6 +38,19 @@ app = FastAPI(title="Scenario Generator UI")
 ui_dir = ROOT / "ui"
 static_dir = ui_dir / "static"
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+# Жёсткий кеш для критичных статических файлов (баннер health)
+class CacheControlMiddleware(BaseHTTPMiddleware):
+    TARGETS = {"/static/js/health.js", "/static/css/health.css"}
+    CACHE_VALUE = "public, max-age=31536000, immutable"
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        if request.url.path in self.TARGETS:
+            response.headers["Cache-Control"] = self.CACHE_VALUE
+        return response
+
+app.add_middleware(CacheControlMiddleware)
 
 @app.get("/")
 def index() -> FileResponse:
@@ -720,6 +736,33 @@ async def stop_run(request: Request):
 
 @app.get("/health")
 def health():
+    # Быстрый TCP-пинг, чтобы не зависнуть на попытке установить Bolt-сессию
+    uri = os.getenv("NEO4J_URI", "")
+    parsed = urlparse(uri)
+    host = parsed.hostname or ""
+    port = parsed.port
+    if not host:
+        return JSONResponse({"status": "db_unavailable", "error": "Некорректный NEO4J_URI"}, status_code=503)
+    if port is None:
+        port = 7687 if (parsed.scheme or "").startswith("bolt") else 7474
+    try:
+        with socket.create_connection((host, port), timeout=3):
+            pass
+    except Exception as e:
+        return JSONResponse(
+            {"status": "db_unavailable", "error": f"socket: {e}"},
+            status_code=503,
+        )
+
+    try:
+        g = get_graph()
+        # Лёгкий пинг: проверяем, что сессия жива, без обхода графа
+        g.run("RETURN 1", timeout=4).evaluate()
+    except Exception as e:
+        return JSONResponse(
+            {"status": "db_unavailable", "error": str(e)},
+            status_code=503,
+        )
     return JSONResponse({"status": "ok"})
 
 
