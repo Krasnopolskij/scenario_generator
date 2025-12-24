@@ -1,6 +1,6 @@
 (() => {
   const ENDPOINT = '/health';
-  const POLL_MS = 7000;
+  const POLL_MS = 15000;
   const TIMEOUT_MS = 5000;
   const TEXT = {
     db: 'Отсутствует соединение с базой данных',
