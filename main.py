@@ -39,8 +39,8 @@ load_dotenv()
 
 def setup_logging():
     level_name = os.getenv("LOG_LEVEL", "INFO").upper()
-    uvicorn_level = os.getenv("UVICORN_LOG_LEVEL", level_name)
-    access_level = os.getenv("UVICORN_ACCESS_LEVEL", uvicorn_level)
+    uvicorn_level = os.getenv("UVICORN_LOG_LEVEL", level_name).upper()
+    access_level = os.getenv("UVICORN_ACCESS_LEVEL", uvicorn_level).upper()
     dictConfig(
         {
             "version": 1,

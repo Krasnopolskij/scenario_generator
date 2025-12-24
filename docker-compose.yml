@@ -6,15 +6,11 @@ services:
     environment:
       # Учётные данные БД, задать в .env (NEO4J_AUTH=user/password)
       - NEO4J_AUTH=${NEO4J_AUTH}
-      - NEO4J_dbms_default__database=${NEO4J_DATABASE}
+      - NEO4J_initial_dbms_default__database=${NEO4J_DATABASE}
       # Настройки логирования Neo4j
-      - NEO4J_dbms_logs_debug_rotation_size=20m
-      - NEO4J_dbms_logs_debug_rotation_keep_number=5
-      - NEO4J_dbms_logs_query_enabled=true
-      - NEO4J_dbms_logs_query_threshold=2s
-      - NEO4J_dbms_logs_query_rotation_size=20m
-      - NEO4J_dbms_logs_query_rotation_keep_number=5
-      - NEO4J_dbms_logs_query_parameter_logging_enabled=true
+      - NEO4J_db_logs_query_enabled=INFO      # OFF/INFO/VERBOSE
+      - NEO4J_db_logs_query_threshold=2s
+      - NEO4J_db_logs_query_parameter__logging__enabled=false
     ports:
       - "7474:7474"   # Веб-интерфейс Neo4j (HTTP)
       - "7687:7687"   # Протокол Bolt
