@@ -26,7 +26,6 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    command: /bin/sh -c "uvicorn main:app --host 0.0.0.0 --port 8000 2>&1 | tee /logs/app/app.log"
     container_name: scenario_app
     depends_on:
       - neo4j
@@ -35,10 +34,12 @@ services:
     # Переменные окружения для приложения читаются из .env в корне автоматически
     env_file:
       - .env
-    volumes:
-      - app_logs:/logs/app
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "5"
 
 volumes:
   neo4j_data:
   neo4j_logs:
-  app_logs:
