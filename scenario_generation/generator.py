@@ -5,6 +5,7 @@ import logging
 from py2neo import Graph
 import heapq
 from scenario_generation.metrics import enrich_cves_with_scores_tactic, compute_scenario_risk
+from link_utils import external_link_for
 
 # Максимум сценариев возвращаем из API
 MAX_SCENARIOS: int = 30
@@ -37,7 +38,11 @@ def _node_to_json(n) -> Dict[str, Any]:
     except Exception:
         nid = str(n.identity)
     labels = list(n.labels) if hasattr(n, "labels") else []
+    label = labels[0] if labels else ""
     props = dict(n)
+    link = external_link_for(label, props.get("identifier"))
+    if link:
+        props["external_link"] = link
     return {"id": nid, "labels": labels, "props": props}
 
 

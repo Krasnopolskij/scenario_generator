@@ -22,6 +22,7 @@ from py2neo import Graph
 from dotenv import load_dotenv
 from cpe import search as cpe_search
 from scenario_generation.generator import generate_scenarios
+from link_utils import external_link_for
 from targets import (
     build_target_uri,
     check_cves_in_db,
@@ -330,6 +331,9 @@ def api_graph_subgraph(cpe: str, mode: str = "full", limit: int = 1000):
         labels = list(n.labels) if hasattr(n, "labels") else []
         props = dict(n)
         label = labels[0] if labels else "Node"
+        link = external_link_for(label, props.get("identifier"))
+        if link:
+            props["external_link"] = link
         # Короткая подпись на узле: CPE, Target, CVE, CWE, Tech, CAPEC
         short = {
             "CPE": "CPE",

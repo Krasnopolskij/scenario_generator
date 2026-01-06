@@ -125,6 +125,7 @@
       name: 'Название',
       description: 'Описание',
       label: 'Метка на графе',
+      external_link: 'Ссылка',
       tactic: 'Тактика',
       tactics: 'Тактики',
       primary_tactic: 'Основная тактика',
@@ -199,6 +200,16 @@
     return safeKey;
   }
 
+  function escapeHtml(val) {
+    return String(val || '').replace(/[&<>"']/g, (ch) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    }[ch] || ch));
+  }
+
   function formatInspectorValue(key, value) {
     const k = String(key || '');
     let v = value;
@@ -210,6 +221,10 @@
     }
     if (Array.isArray(v)) v = v.join(', ');
     if (v == null) v = '';
+    if (k === 'external_link' && typeof v === 'string' && v) {
+      const safe = escapeHtml(v);
+      return `<a href="${safe}" target="_blank" rel="noreferrer noopener">${safe}</a>`;
+    }
     const vs = String(v);
     return vs.length > 800 ? vs.slice(0, 800) : vs;
   }
@@ -218,6 +233,13 @@
     const label = translatePropName(key, group);
     const val = formatInspectorValue(key, value);
     rows.push(`<div class="row"><div class="k">${label}</div><div class="v">${val}</div></div>`);
+  }
+
+  function appendExternalLink(rows, props, group) {
+    if (!props) return;
+    const link = props.external_link;
+    if (!link) return;
+    addInspectorRow(rows, 'external_link', link, group);
   }
 
   // Обработка сворачивания инспектора
@@ -1565,11 +1587,12 @@
       }
       // Остальные поля (если есть)
       for (const k of Object.keys(props)) {
-        if (order.includes(k)) continue;
+        if (order.includes(k) || k === 'external_link') continue;
         addInspectorRow(rows, k, props[k], group);
         if (rows.length > 30) break;
       }
       addInspectorRow(rows, 'label', label, group);
+      appendExternalLink(rows, props, group);
       inspector.innerHTML = rows.join('');
       return;
     }
@@ -1587,6 +1610,7 @@
         'cvss_epss_ratio', 'cvss_epss_max_ratio',
         'cvss_C_epss_ratio', 'cvss_I_epss_ratio', 'cvss_A_epss_ratio',
         'cvss_C_epss_max_ratio', 'cvss_I_epss_max_ratio', 'cvss_A_epss_max_ratio',
+        'external_link',
       ]);
       const seen = new Set();
       for (const k of priority) {
@@ -1600,16 +1624,19 @@
         if (rows.length > 30) break;
       }
       addInspectorRow(rows, 'label', label, group);
+      appendExternalLink(rows, props, group);
       inspector.innerHTML = rows.join('');
       return;
     }
 
     // Поведение по умолчанию для других групп: свойства как есть и label в конце
     for (const k of Object.keys(props)) {
+      if (k === 'external_link') continue;
       addInspectorRow(rows, k, props[k], group);
       if (rows.length > 30) break;
     }
     addInspectorRow(rows, 'label', label, group);
+    appendExternalLink(rows, props, group);
     inspector.innerHTML = rows.join('');
   }
 
