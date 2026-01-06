@@ -96,6 +96,18 @@ def _safe_float(v: Any) -> float:
         return 0.0
 
 
+def _edge_score(rel) -> float:
+    """Извлекает score у ребра CAPEC_TO_TECHNIQUE_PRED, для остальных возвращает 1.0."""
+    if rel is None:
+        return 1.0
+    try:
+        val = dict(rel).get("score")
+    except Exception:
+        val = None
+    score = _safe_float(val)
+    return score if score > 0 else 1.0
+
+
 def _cve_ids(step: Dict[str, Any]) -> Set[str]:
     ids: Set[str] = set()
     try:
@@ -111,6 +123,17 @@ def _cve_ids(step: Dict[str, Any]) -> Set[str]:
     except Exception:
         return set()
     return ids
+
+
+def _cve_key(cv: Dict[str, Any]) -> str:
+    props = (cv or {}).get("props") or {}
+    ident = props.get("identifier") or cv.get("id")
+    if ident is None:
+        return ""
+    try:
+        return str(ident)
+    except Exception:
+        return ""
 
 
 def _select_techniques_with_limit(
@@ -243,16 +266,16 @@ def _collect_evidence(
         MATCH (cve:CVE)-[:AFFECTS]->(obj)
         MATCH (w:CWE)-[:CWE_TO_CVE]->(cve)
         MATCH (cap2:CAPEC)-[:CAPEC_TO_CWE]->(w)
-        MATCH (cap1:CAPEC)-[:{capec_to_tech_rel}]->(t:Technique)
+        MATCH (cap1:CAPEC)-[rel:{capec_to_tech_rel}]->(t:Technique)
         WHERE cap1 = cap2 OR ($relaxed AND (cap1)-[:CAPEC_PARENT_TO_CAPEC_CHILD]-(cap2))
-        RETURN DISTINCT t, cve, w, cap1, cap2
+        RETURN DISTINCT t, cve, w, cap1, cap2, rel
         """
     )
 
     entries: Dict[str, Dict[str, Any]] = {}
 
     # helper to upsert evidence per technique
-    def add_evidence(t, cve=None, w=None, caps: Optional[List] = None):
+    def add_evidence(t, cve=None, w=None, caps: Optional[List] = None, edge_score: float = 1.0):
         if t is None:
             return
         tj = _node_to_json(t)
@@ -266,12 +289,18 @@ def _collect_evidence(
                 "cves": [],
                 "cwes": [],
                 "capecs": [],
+                "edge_scores": {},
             }
             entries[tid] = rec
         if cve is not None:
             cv = _node_to_json(cve)
             if cv and cv not in rec["cves"]:
                 rec["cves"].append(cv)
+            cid = _cve_key(cv)
+            if cid:
+                prev = _safe_float(rec["edge_scores"].get(cid, 0.0))
+                val = _safe_float(edge_score)
+                rec["edge_scores"][cid] = max(prev, val if val > 0 else 0.0)
         if w is not None:
             wj = _node_to_json(w)
             if wj and wj not in rec["cwes"]:
@@ -286,7 +315,7 @@ def _collect_evidence(
         t = row.get("t") if hasattr(row, "get") else row[0]
         cve = row.get("cve") if hasattr(row, "get") else row[1]
         w = row.get("w") if hasattr(row, "get") else row[2]
-        add_evidence(t, cve=cve, w=w, caps=[])
+        add_evidence(t, cve=cve, w=w, caps=[], edge_score=1.0)
 
     # Через CAPEC
     for row in graph.run(q_capec, obj=obj_uri, relaxed=bool(relaxed), timeout=QUERY_TIMEOUT):
@@ -295,12 +324,14 @@ def _collect_evidence(
         w = row.get("w") if hasattr(row, "get") else row[2]
         cap1 = row.get("cap1") if hasattr(row, "get") else row[3]
         cap2 = row.get("cap2") if hasattr(row, "get") else row[4]
+        rel = row.get("rel") if hasattr(row, "get") else row[5]
+        edge_score = _edge_score(rel)
         caps = []
         if cap1 is not None:
             caps.append(cap1)
         if cap2 is not None and cap2 is not cap1:
             caps.append(cap2)
-        add_evidence(t, cve=cve, w=w, caps=caps)
+        add_evidence(t, cve=cve, w=w, caps=caps, edge_score=edge_score)
 
     # Удаляем техники без CVE (нет доказательной базы для данного CPE)
     for tid in list(entries.keys()):
@@ -332,6 +363,7 @@ def _build_candidate_buckets(
             tech = step.get("technique")
             cwes = step.get("cwes") or []
             capecs = step.get("capecs") or []
+            edge_scores = step.get("edge_scores") or {}
             for cv in step.get("cves") or []:
                 props = (cv or {}).get("props") or {}
                 epss_norm = _safe_float(props.get("epss_norm"))
@@ -340,6 +372,13 @@ def _build_candidate_buckets(
                     epss = _safe_float(props.get("epss"))
                     cvss = _safe_float(props.get("cvss"))
                     ratio = (cvss / epss) if epss > 0 else 0.0
+                cv_key = _cve_key(cv)
+                edge_score = edge_scores.get(cv_key)
+                if edge_score is None:
+                    edge_score = 1.0
+                edge_score = _safe_float(edge_score)
+                if edge_score < 0:
+                    edge_score = 0.0
                 candidates.append(
                     {
                         "tactic_order": order,
@@ -350,6 +389,7 @@ def _build_candidate_buckets(
                         "capecs": capecs,
                         "epss_norm": epss_norm,
                         "ratio": ratio,
+                        "edge_score": edge_score,
                         "max_ratio": tactic_max_ratio,
                     }
                 )
@@ -357,7 +397,7 @@ def _build_candidate_buckets(
             # Сортировка для детерминизма: surrogate по epss_norm * ratio, затем техника и CVE
             candidates.sort(
                 key=lambda x: (
-                    -(x.get("epss_norm") or 0.0) * (x.get("ratio") or 0.0),
+                    -(x.get("epss_norm") or 0.0) * (x.get("ratio") or 0.0) * (x.get("edge_score") or 0.0),
                     x.get("technique", {}).get("props", {}).get("identifier", ""),
                     ((x.get("cves") or [{}])[0].get("props") or {}).get("identifier", ""),
                 )
@@ -484,6 +524,7 @@ def generate_scenarios(
             "cves": rec["cves"],
             "cwes": rec["cwes"],
             "capecs": rec["capecs"],
+            "edge_scores": rec.get("edge_scores", {}),
         }
         tmp.setdefault((tactic_order, primary_tactic), []).append(step)
 

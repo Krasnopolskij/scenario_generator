@@ -220,7 +220,10 @@ def compute_scenario_risk(
             cve = None
         props = (cve or {}).get("props") or {}
         epss_norm = _safe_float(props.get("epss_norm"))
-        prob_prod *= epss_norm
+        edge_score = _safe_float((st or {}).get("edge_score", 1.0))
+        if edge_score < 0:
+            edge_score = 0.0
+        prob_prod *= epss_norm * edge_score
 
         ratio = _safe_float(props.get("cvss_epss_ratio"))
         if ratio <= 0:
