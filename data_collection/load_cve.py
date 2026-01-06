@@ -5,6 +5,7 @@ import gzip
 import json
 import time
 import datetime as dt
+import logging
 from typing import Any, List, Dict, Optional, Tuple
 import hashlib
 import requests
@@ -13,6 +14,7 @@ from tqdm import tqdm
 
 NVD_BASE = os.getenv("NVD_FEED_BASE", "https://nvd.nist.gov/feeds/json/cve/2.0")
 DEFAULT_CISA_KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+logger = logging.getLogger(__name__)
 
 # Управление проверкой хеша фида: по умолчанию включена
 # Установите переменную окружения NVD_CHECK_HASH=false, чтобы принудительно выполнять импорт,
@@ -716,33 +718,37 @@ def update_cisa_kev(graph: Graph):
 
 
 def apply_epss_fallback_min(graph: Graph):
-    """Присваивает минимальный EPSS там, где он отсутствует, и выставляет флаг источника.
+    """Присваивает EPSS на основе 1-го перцентиля там, где он отсутствует, и выставляет флаг источника.
 
     Логика:
-      - Находим минимальный EPSS среди CVE, у которых EPSS задан.
-      - Для всех CVE без EPSS задаём EPSS = min_epss и флаг epss_from_first = false (значение подставлено).
+      - Находим 1-й перцентиль (p0) EPSS среди CVE, помеченных как пришедшие из источника FIRST.
+      - Для всех CVE без EPSS задаём EPSS = p0 и флаг epss_from_first = false (значение подставлено).
       - Для всех CVE с EPSS из источника выставляем epss_from_first = true.
       - Старый флаг epss_is_fallback (если присутствует) удаляем.
     """
     try:
-        # Находим минимальный EPSS среди тех, что помечены как пришедшие из источника FIRST
+        # Находим 1-й перцентиль среди EPSS, помеченных как пришедшие из источника FIRST
         rec = graph.run(
             """
             MATCH (v:CVE)
-            WHERE coalesce(v.epss_from_first, false) = true AND v.epss IS NOT NULL
-            RETURN min(toFloat(v.epss)) AS m
+            WHERE v.epss IS NOT NULL and v.epss_from_first = true
+            RETURN percentileCont(toFloat(v.epss), 0.01) AS p0
             """
         ).data()
-        min_epss = None
-        if rec and isinstance(rec, list) and rec[0].get("m") is not None:
+        epss_floor = None
+        if rec and isinstance(rec, list):
+            raw_p0 = rec[0].get("p0")
             try:
-                min_epss = float(rec[0].get("m"))
+                p0 = float(raw_p0) if raw_p0 is not None else None
             except Exception:
-                min_epss = None
-        if min_epss is None:
-            # Не к чему приравнивать — пропускаем
+                p0 = None
+            if p0 is not None and p0 > 0:
+                epss_floor = p0
+
+        if epss_floor is None:
+            logger.warning("[EPSS] Не удалось вычислить 1-й перцентиль (p0) по данным FIRST, пропуск применения значения по умолчанию")
             return
-        # Присваиваем минимальный EPSS всем CVE, у которых EPSS не из источника FIRST
+        # Присваиваем перцентиль EPSS всем CVE, у которых EPSS не из источника FIRST
         # (epss_from_first=false или флаг отсутствует), а также тем, у кого EPSS отсутствует.
         graph.run(
             """
@@ -751,15 +757,7 @@ def apply_epss_fallback_min(graph: Graph):
             SET v.epss = $m,
                 v.epss_from_first = false
             """,
-            m=min_epss,
-        )
-        # Удаляем устаревший флаг, если такой имеется
-        graph.run(
-            """
-            MATCH (v:CVE)
-            WHERE v.epss_is_fallback IS NOT NULL
-            REMOVE v.epss_is_fallback
-            """
+            m=epss_floor,
         )
     except Exception as e:
         print(f"[EPSS] Ошибка применения значения по умолчанию: {e}")
@@ -780,7 +778,7 @@ def load():
 
         # Диапазон лет
         current_year = dt.datetime.now(dt.UTC).year
-        # Аккуратно парсим годы: пустые/некорректные значения игнорируем
+        # Пустые/некорректные значения игнорируем
         raw_from = (os.getenv("NVD_FROM_YEAR") or "").strip()
         raw_to = (os.getenv("NVD_TO_YEAR") or "").strip()
         try:

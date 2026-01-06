@@ -167,7 +167,7 @@ def main():
         print(f"[EPSS] Ошибка обновления: {e}")
         sys.exit(1)
 
-    # Присваиваем минимальный EPSS там, где он отсутствует
+    # Присваиваем EPSS по 1-му перцентилю там, где он отсутствует
     try:
         apply_epss_fallback_min(graph)
     except Exception as e:

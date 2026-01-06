@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Any, Dict, List, Tuple
 
-EPSS_EFF_TRESHHOLD = 1e-3
+EPSS_BETA = 0.311
 
 def _safe_float(value: Any) -> float:
     try:
@@ -82,7 +82,7 @@ def _calc_ratios(cves: List[Dict[str, Any]], base_key: str = "cvss") -> Tuple[Li
         epss = _safe_float(props.get("epss"))
         base_val = _safe_float(props.get(base_key))
 
-        epss_eff = max(epss, EPSS_EFF_TRESHHOLD)
+        epss_eff = epss ** EPSS_BETA
         # if epss <= 0:
         #     ratios.append(0.0)
         #     continue
@@ -225,7 +225,7 @@ def compute_scenario_risk(
         ratio = _safe_float(props.get("cvss_epss_ratio"))
         if ratio <= 0:
             epss = _safe_float(props.get("epss"))
-            epss_eff = max(epss, EPSS_EFF_TRESHHOLD)
+            epss_eff = epss ** EPSS_BETA
             cvss = _safe_float(props.get("cvss"))
             ratio = (cvss / epss_eff) #if epss > 0 else 0.0
         ratio_sum += ratio
