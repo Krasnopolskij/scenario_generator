@@ -125,7 +125,7 @@
       name: 'Название',
       description: 'Описание',
       label: 'Метка на графе',
-      external_link: 'Ссылка',
+      external_link: 'Внешняя ссылка',
       tactic: 'Тактика',
       tactics: 'Тактики',
       primary_tactic: 'Основная тактика',
