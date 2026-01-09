@@ -122,6 +122,7 @@ option:disabled { color: #6c7390; }
 .page-data .actions > button { white-space: nowrap; }
 .page-data .actions > button:last-child { flex: 1 1 auto; }
 .page-data #refresh-epss-kev-btn { width: 100%; }
+.page-data #gnn-roc-btn { width: 100%; }
 button { cursor: pointer; border: 0; border-radius: 8px; padding: 8px 14px; font-weight: 600; color: white; background: var(--accent); }
 button[disabled] { opacity: 0.65; cursor: not-allowed; }
 #stop-btn { background: var(--error); }
@@ -309,9 +310,42 @@ button.selected { background: var(--ok); }
 .modal-backdrop.open { display: flex; }
 .modal-backdrop[hidden] { display: none !important; }
 .modal { width: min(680px, 92vw); background: var(--panel); border: 1px solid var(--line-soft); border-radius: 12px; padding: 16px; box-shadow: 0 12px 36px rgba(0,0,0,0.45); }
+.modal.modal-roc { width: min(860px, 96vw); }
 .modal-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
 .modal-body { color: var(--muted); margin-bottom: 14px; }
 .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+.roc-message {
+  color: var(--text);
+  background: var(--surface-soft);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+.roc-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.roc-stats .roc-pill {
+  background: var(--surface-soft);
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  padding: 4px 10px;
+  color: var(--text);
+  font-weight: 600;
+}
+.roc-canvas {
+  width: 100%;
+  height: auto;
+  display: block;
+  background: var(--surface-soft);
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+}
 
 .modal.modal-landscape { width: min(1450px, 96vw); max-width: 1450px; }
 .landscape-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }

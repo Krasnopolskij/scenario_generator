@@ -114,6 +114,9 @@
           <button id="gnn-stop-btn" type="button" disabled>Остановить</button>
           <button id="gnn-clear-btn" type="button">Удалить добавленные связи</button>
         </div>
+        <div class="field">
+          <button id="gnn-roc-btn" type="button" class="btn-secondary">Показать ROC-AUC</button>
+        </div>
       </div>
     </section>
 
@@ -166,9 +169,24 @@
     </div>
   </div>
 
+  <!-- ROC-AUC график GNN -->
+  <div id="gnn-roc-backdrop" class="modal-backdrop" hidden>
+    <div class="modal modal-roc">
+      <div class="modal-title">ROC-AUC (GNN)</div>
+      <div class="modal-body">
+        <div id="gnn-roc-message" class="roc-message" hidden></div>
+        <div id="gnn-roc-stats" class="roc-stats" hidden></div>
+        <canvas id="gnn-roc-canvas" class="roc-canvas" width="800" height="500" hidden></canvas>
+      </div>
+      <div class="modal-actions">
+        <button id="gnn-roc-close" class="btn-primary">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/static/js/health.js?v=20251206" defer></script>
   <script src="/static/js/theme.js?v=20251030" defer></script>
   <script src="/static/js/tooltip.js?v=20251111" defer></script>
-  <script src="/static/js/load.js?v=20251119"></script>
+  <script src="/static/js/load.js?v=20251212"></script>
 </body>
 </html>

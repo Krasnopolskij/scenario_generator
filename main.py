@@ -1,4 +1,6 @@
+import json
 import logging
+import math
 from logging.config import dictConfig
 import os
 import socket
@@ -869,6 +871,53 @@ def clear_gnn_predictions():
         )
     logger.info("cleared GNN predictions")
     return JSONResponse({"status": "ok"})
+
+
+@app.get("/gnn/roc-auc")
+def get_gnn_roc_auc():
+    allow_gnn = os.getenv("ALLOW_GNN_CONTROL", "false").lower() in {"1", "true", "yes"}
+    if not allow_gnn:
+        logger.warning("GNN ROC-AUC request denied by config")
+        return JSONResponse(
+            {"error": "Управление GNN отключено администатором"},
+            status_code=403,
+        )
+
+    path = ROOT / "gnn" / "roc_auc_last.json"
+    if not path.exists():
+        return JSONResponse(
+            {"status": "missing", "error": "Файл ROC-AUC не найден."},
+            status_code=404,
+        )
+
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except Exception as exc:
+        logger.exception("failed to read ROC-AUC JSON: %s", exc)
+        return JSONResponse(
+            {"status": "error", "error": "Не удалось прочитать файл ROC-AUC."},
+            status_code=500,
+        )
+
+    try:
+        payload = json.loads(raw)
+    except Exception as exc:
+        logger.exception("failed to parse ROC-AUC JSON: %s", exc)
+        return JSONResponse(
+            {"status": "error", "error": "Некорректный формат JSON ROC-AUC."},
+            status_code=500,
+        )
+
+    def sanitize(obj):
+        if isinstance(obj, float):
+            return obj if math.isfinite(obj) else None
+        if isinstance(obj, list):
+            return [sanitize(item) for item in obj]
+        if isinstance(obj, dict):
+            return {key: sanitize(value) for key, value in obj.items()}
+        return obj
+
+    return JSONResponse(sanitize(payload))
 
 
 @app.post("/stop")

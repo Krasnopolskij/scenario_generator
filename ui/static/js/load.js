@@ -6,6 +6,7 @@
   const gnnRunBtn = document.getElementById('gnn-run-btn');
   const gnnStopBtn = document.getElementById('gnn-stop-btn');
   const gnnClearBtn = document.getElementById('gnn-clear-btn');
+  const gnnRocBtn = document.getElementById('gnn-roc-btn');
   const output = document.getElementById('output');
   const clearBtn = document.getElementById('clear-btn');
   const LS_KEY = 'sg:data:filters';
@@ -518,6 +519,11 @@
   const gnnClearResultBackdrop = document.getElementById('gnn-clear-result-backdrop');
   const gnnClearResultMessage = document.getElementById('gnn-clear-result-message');
   const gnnClearResultOk = document.getElementById('gnn-clear-result-ok');
+  const gnnRocBackdrop = document.getElementById('gnn-roc-backdrop');
+  const gnnRocMessage = document.getElementById('gnn-roc-message');
+  const gnnRocStats = document.getElementById('gnn-roc-stats');
+  const gnnRocCanvas = document.getElementById('gnn-roc-canvas');
+  const gnnRocClose = document.getElementById('gnn-roc-close');
 
   function openGnnClearConfirmModal() {
     if (!gnnClearConfirmBackdrop) return;
@@ -560,6 +566,197 @@
   }
   if (gnnClearResultOk) {
     gnnClearResultOk.addEventListener('click', () => closeGnnClearResultModal());
+  }
+
+  function openGnnRocModal() {
+    if (!gnnRocBackdrop) return;
+    gnnRocBackdrop.hidden = false;
+    gnnRocBackdrop.classList.add('open');
+  }
+  function closeGnnRocModal() {
+    if (!gnnRocBackdrop) return;
+    gnnRocBackdrop.classList.remove('open');
+    gnnRocBackdrop.hidden = true;
+  }
+  function setRocMessage(message) {
+    if (!gnnRocMessage) return;
+    gnnRocMessage.textContent = message || '';
+    gnnRocMessage.hidden = !message;
+  }
+  function setRocStats(text) {
+    if (!gnnRocStats) return;
+    gnnRocStats.textContent = '';
+    if (!text) {
+      gnnRocStats.hidden = true;
+      return;
+    }
+    gnnRocStats.hidden = false;
+    const parts = Array.isArray(text) ? text : [text];
+    parts.forEach((part) => {
+      const span = document.createElement('span');
+      span.className = 'roc-pill';
+      span.textContent = part;
+      gnnRocStats.appendChild(span);
+    });
+  }
+
+  function getCssVar(name, fallback) {
+    const val = getComputedStyle(document.body).getPropertyValue(name).trim();
+    return val || fallback;
+  }
+
+  function drawRocCurve(canvas, data) {
+    if (!canvas || !data) return;
+    const fpr = Array.isArray(data.fpr) ? data.fpr : [];
+    const tpr = Array.isArray(data.tpr) ? data.tpr : [];
+    if (!fpr.length || !tpr.length) throw new Error('Нет данных для графика.');
+
+    const rect = canvas.getBoundingClientRect();
+    const width = Math.max(320, Math.floor(rect.width || 640));
+    const height = Math.max(220, Math.floor(width * 0.62));
+    const dpr = window.devicePixelRatio || 1;
+
+    canvas.width = Math.floor(width * dpr);
+    canvas.height = Math.floor(height * dpr);
+    canvas.style.height = `${height}px`;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const colors = {
+      bg: getCssVar('--surface-soft', '#0f1326'),
+      axis: getCssVar('--line-soft', '#1d2342'),
+      diag: getCssVar('--muted', '#9aa0b4'),
+      curve: getCssVar('--accent', '#4f8cff'),
+      text: getCssVar('--text', '#e5e7ef'),
+      muted: getCssVar('--muted', '#9aa0b4'),
+    };
+
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = colors.bg;
+    ctx.fillRect(0, 0, width, height);
+
+    const margin = { left: 50, right: 18, top: 16, bottom: 38 };
+    const plotW = Math.max(10, width - margin.left - margin.right);
+    const plotH = Math.max(10, height - margin.top - margin.bottom);
+
+    ctx.strokeStyle = colors.axis;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(margin.left, margin.top);
+    ctx.lineTo(margin.left, margin.top + plotH);
+    ctx.lineTo(margin.left + plotW, margin.top + plotH);
+    ctx.stroke();
+
+    ctx.save();
+    ctx.setLineDash([6, 6]);
+    ctx.strokeStyle = colors.diag;
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = 0.55;
+    ctx.beginPath();
+    ctx.moveTo(margin.left, margin.top + plotH);
+    ctx.lineTo(margin.left + plotW, margin.top);
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.strokeStyle = colors.curve;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let i = 0; i < Math.min(fpr.length, tpr.length); i++) {
+      const x = margin.left + Number(fpr[i]) * plotW;
+      const y = margin.top + (1 - Number(tpr[i])) * plotH;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    ctx.fillStyle = colors.text;
+    ctx.font = '12px system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, sans-serif';
+    ctx.fillText('FPR', margin.left + plotW / 2 - 10, margin.top + plotH + 26);
+    ctx.save();
+    ctx.translate(16, margin.top + plotH / 2 + 10);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText('TPR', 0, 0);
+    ctx.restore();
+
+    ctx.fillStyle = colors.muted;
+    ctx.fillText('0', margin.left - 10, margin.top + plotH + 14);
+    ctx.fillText('1', margin.left + plotW - 6, margin.top + plotH + 14);
+    ctx.fillText('1', margin.left - 14, margin.top + 8);
+  }
+
+  async function loadRocData() {
+    setRocMessage('Загрузка ROC-AUC...');
+    setRocStats(null);
+    if (gnnRocCanvas) gnnRocCanvas.hidden = true;
+
+    let resp;
+    try {
+      resp = await fetch('/gnn/roc-auc', { method: 'GET' });
+    } catch (err) {
+      setRocMessage(`Не удалось загрузить ROC-AUC: ${err}`);
+      return;
+    }
+
+    let data = null;
+    try {
+      data = await resp.json();
+    } catch (err) {
+      setRocMessage(`Не удалось разобрать ответ сервера: ${err}`);
+      return;
+    }
+
+    if (!resp.ok) {
+      setRocMessage(data && data.error ? data.error : `Ошибка загрузки (${resp.status})`);
+      return;
+    }
+
+    if (!data || data.status !== 'ok') {
+      const msg = (data && data.error) ? data.error : 'ROC-AUC данные пока недоступны.';
+      setRocMessage(msg);
+      return;
+    }
+
+    const meta = data.meta || {};
+    const auc = typeof data.auc === 'number' ? data.auc.toFixed(4) : 'n/a';
+    const parts = [`AUC: ${auc}`];
+    if (meta.mode) parts.push(`Режим: ${meta.mode}`);
+    if (typeof meta.pos_test === 'number' && typeof meta.neg_test === 'number') {
+      parts.push(`test: +${meta.pos_test} / -${meta.neg_test}`);
+    }
+    if (meta.created_at) {
+      const dt = new Date(meta.created_at);
+      if (!Number.isNaN(dt.getTime())) {
+        parts.push(`Обновлено: ${dt.toLocaleString()}`);
+      }
+    }
+    setRocStats(parts);
+    setRocMessage(null);
+    if (gnnRocCanvas) {
+      gnnRocCanvas.hidden = false;
+      requestAnimationFrame(() => {
+        try {
+          drawRocCurve(gnnRocCanvas, data);
+        } catch (err) {
+          gnnRocCanvas.hidden = true;
+          setRocMessage(`Не удалось построить график: ${err}`);
+        }
+      });
+    }
+  }
+
+  if (gnnRocBtn) {
+    gnnRocBtn.addEventListener('click', async () => {
+      openGnnRocModal();
+      await loadRocData();
+    });
+  }
+  if (gnnRocClose) gnnRocClose.addEventListener('click', () => closeGnnRocModal());
+  if (gnnRocBackdrop) {
+    gnnRocBackdrop.addEventListener('click', (e) => {
+      if (e.target === gnnRocBackdrop) closeGnnRocModal();
+    });
   }
 
   function openLeaveModal(href=null) {

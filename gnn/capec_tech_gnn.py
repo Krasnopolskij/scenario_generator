@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import argparse
+import json
+import math
 import os
 import random
 import sys
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -15,7 +19,7 @@ import torch.nn.functional as F
 from dotenv import load_dotenv
 from py2neo import Graph
 from sentence_transformers import SentenceTransformer
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_auc_score, roc_curve
 from torch_geometric.nn import GCNConv
 from tqdm import tqdm
 
@@ -41,7 +45,7 @@ class GNNConfig:
 
     # Отбор предсказанных рёбер
     top_k: int = 2
-    min_score: float = 0.5
+    min_score: float = 0.7
 
     # Режим работы GNN: mlp (через MLP-предиктор) или dot (через cosine-сходство)
     mode: str = "dot"
@@ -373,6 +377,65 @@ def set_random_seed(seed: int) -> None:
         torch.cuda.manual_seed_all(seed)
 
 
+def _roc_json_path() -> Path:
+    return Path(__file__).resolve().parent / "roc_auc_last.json"
+
+
+def save_roc_auc_json(
+    cfg: GNNConfig,
+    status: str,
+    auc: Optional[float] = None,
+    fpr: Optional[np.ndarray] = None,
+    tpr: Optional[np.ndarray] = None,
+    thresholds: Optional[np.ndarray] = None,
+    meta: Optional[Dict[str, object]] = None,
+    error: Optional[str] = None,
+) -> None:
+    def _safe_float_list(values: Optional[np.ndarray]) -> List[Optional[float]]:
+        if values is None:
+            return []
+        try:
+            arr = np.asarray(values, dtype=np.float64)
+        except Exception:
+            return []
+        out: List[Optional[float]] = []
+        for val in arr.tolist():
+            try:
+                fval = float(val)
+            except Exception:
+                out.append(None)
+                continue
+            if math.isfinite(fval):
+                out.append(fval)
+            else:
+                out.append(None)
+        return out
+
+    payload: Dict[str, object] = {
+        "status": status,
+        "auc": float(auc) if auc is not None else None,
+        "fpr": _safe_float_list(fpr),
+        "tpr": _safe_float_list(tpr),
+        "thresholds": _safe_float_list(thresholds),
+        "error": error,
+        "meta": meta or {},
+    }
+    payload["meta"].setdefault("created_at", datetime.now(timezone.utc).isoformat())
+    payload["meta"].setdefault("mode", cfg.mode)
+    payload["meta"].setdefault("sentence_model", cfg.sentence_model_name)
+    payload["meta"].setdefault("epochs", cfg.epochs)
+    payload["meta"].setdefault("seed", cfg.seed)
+
+    path = _roc_json_path()
+    try:
+        path.write_text(
+            json.dumps(payload, ensure_ascii=True, indent=2, allow_nan=False),
+            encoding="utf-8",
+        )
+    except Exception as exc:
+        print(f"Не удалось сохранить ROC-AUC JSON ({path}): {exc}")
+
+
 def sample_negative_pairs(
     dataset: CapecTechniqueDataset,
     pos_pairs: Sequence[Tuple[int, int]],
@@ -483,6 +546,23 @@ def train_gnn_mlp(
     # Оценка ROC-AUC на отложенной выборке
     if pos_test:
         neg_test_pairs = sample_negative_pairs(dataset, pos_test)
+        meta = {
+            "pos_total": len(pos_pairs),
+            "pos_test": len(pos_test),
+            "neg_test": len(neg_test_pairs),
+        }
+        if not neg_test_pairs:
+            print(
+                "Недостаточно отрицательных примеров для ROC-AUC, результаты не сохранены."
+            )
+            save_roc_auc_json(
+                cfg,
+                status="no_test_data",
+                meta=meta,
+                error="Недостаточно отрицательных примеров для ROC-AUC.",
+            )
+            z_cpu = z.detach().cpu()
+            return encoder, predictor, z_cpu
         pos_test_tensor = torch.tensor(pos_test, dtype=torch.long, device=device)
         neg_test_tensor = torch.tensor(neg_test_pairs, dtype=torch.long, device=device)
         with torch.no_grad():
@@ -497,16 +577,38 @@ def train_gnn_mlp(
             [np.ones_like(pos_scores_t), np.zeros_like(neg_scores_t)]
         )
         try:
+            fpr, tpr, thresholds = roc_curve(y_true, y_scores, drop_intermediate=False)
             auc = roc_auc_score(y_true, y_scores)
             print(
                 f"Оценка ROC-AUC (режим mlp): {auc:.4f} "
                 f"(pos={len(pos_test)}, neg={len(neg_test_pairs)})"
             )
+            save_roc_auc_json(
+                cfg,
+                status="ok",
+                auc=auc,
+                fpr=fpr,
+                tpr=tpr,
+                thresholds=thresholds,
+                meta=meta,
+            )
         except Exception as e:
             print(f"Не удалось посчитать ROC-AUC: {e}")
+            save_roc_auc_json(
+                cfg,
+                status="error",
+                meta=meta,
+                error=f"Не удалось посчитать ROC-AUC: {e}",
+            )
     else:
         print(
             "Недостаточно данных для выделения отложенной выборки, ROC-AUC не рассчитан."
+        )
+        save_roc_auc_json(
+            cfg,
+            status="no_test_data",
+            meta={"pos_total": len(pos_pairs), "pos_test": 0, "neg_test": 0},
+            error="Недостаточно данных для выделения отложенной выборки.",
         )
 
     z_cpu = z.detach().cpu()
@@ -610,6 +712,23 @@ def train_gnn_dot(
 
     if pos_test:
         neg_test_pairs = sample_negative_pairs(dataset, pos_test)
+        meta = {
+            "pos_total": len(pos_pairs),
+            "pos_test": len(pos_test),
+            "neg_test": len(neg_test_pairs),
+        }
+        if not neg_test_pairs:
+            print(
+                "Недостаточно отрицательных примеров для ROC-AUC, результаты не сохранены."
+            )
+            save_roc_auc_json(
+                cfg,
+                status="no_test_data",
+                meta=meta,
+                error="Недостаточно отрицательных примеров для ROC-AUC.",
+            )
+            z_cpu = z.detach().cpu()
+            return encoder, None, z_cpu
         pos_test_tensor = torch.tensor(pos_test, dtype=torch.long, device=device)
         neg_test_tensor = torch.tensor(neg_test_pairs, dtype=torch.long, device=device)
         with torch.no_grad():
@@ -620,16 +739,38 @@ def train_gnn_dot(
             [np.ones_like(pos_scores_t), np.zeros_like(neg_scores_t)]
         )
         try:
+            fpr, tpr, thresholds = roc_curve(y_true, y_scores, drop_intermediate=False)
             auc = roc_auc_score(y_true, y_scores)
             print(
                 f"Оценка ROC-AUC (режим dot): {auc:.4f} "
                 f"(pos={len(pos_test)}, neg={len(neg_test_pairs)})"
             )
+            save_roc_auc_json(
+                cfg,
+                status="ok",
+                auc=auc,
+                fpr=fpr,
+                tpr=tpr,
+                thresholds=thresholds,
+                meta=meta,
+            )
         except Exception as e:
             print(f"Не удалось посчитать ROC-AUC: {e}")
+            save_roc_auc_json(
+                cfg,
+                status="error",
+                meta=meta,
+                error=f"Не удалось посчитать ROC-AUC: {e}",
+            )
     else:
         print(
             "Недостаточно данных для выделения отложенной выборки, ROC-AUC не рассчитан."
+        )
+        save_roc_auc_json(
+            cfg,
+            status="no_test_data",
+            meta={"pos_total": len(pos_pairs), "pos_test": 0, "neg_test": 0},
+            error="Недостаточно данных для выделения отложенной выборки.",
         )
 
     z_cpu = z.detach().cpu()
@@ -891,12 +1032,24 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     if not dataset.pos_pairs:
         print("В базе нет исходных рёбер CAPEC_TO_TECHNIQUE — обучение пропущено.")
+        save_roc_auc_json(
+            cfg,
+            status="no_data",
+            meta={"pos_total": 0, "pos_test": 0, "neg_test": 0},
+            error="В базе нет исходных рёбер CAPEC_TO_TECHNIQUE.",
+        )
         return 0
 
     try:
         encoder, predictor, z = train_gnn(dataset, cfg)
     except Exception as e:
         print(f"[CRITICAL] Ошибка при обучении GNN: {e}")
+        save_roc_auc_json(
+            cfg,
+            status="error",
+            meta={"pos_total": len(dataset.pos_pairs), "pos_test": 0, "neg_test": 0},
+            error=f"Ошибка при обучении GNN: {e}",
+        )
         return 1
 
     try:
