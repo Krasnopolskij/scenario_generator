@@ -30,6 +30,7 @@
   const exportPngBtn = document.getElementById('export-png');
   const exportSvgBtn = document.getElementById('export-svg');
   const exportJsonBtn = document.getElementById('export-json');
+  const exportApiBtn = document.getElementById('export-api');
   const exportCloseBtn = document.getElementById('export-close');
   const exportTransparent = document.getElementById('export-transparent');
   // 3D ландшафт
@@ -77,6 +78,9 @@
   let currentScenarioData = null; // выбранный сценарий для повторной перерисовки
   let lastMega = null; // mega для первичного сценария
   let landscape = null; // контроллер 3D ландшафта
+  let measuresConfigPromise = null;
+  let measuresConfig = { allowExport: false, apiUrl: '' };
+  let measuresWindowRef = null;
   // Состояние ключей в сценариях
   let linearClosedKeyByTactic = new Map();
   let primaryClosedKeyByTactic = new Map();
@@ -1180,6 +1184,56 @@
     if (!base) base = 'landscape';
     return `${base}_landscape.png`;
   }
+  function applyMeasuresConfig(cfg) {
+    measuresConfig = cfg;
+    if (!exportApiBtn) return;
+    if (!cfg.allowExport || !cfg.apiUrl) {
+      exportApiBtn.disabled = true;
+      exportApiBtn.title = 'Экспорт в модуль мер отключён';
+    } else {
+      exportApiBtn.disabled = false;
+      exportApiBtn.title = 'Отправить в модуль генерации мер';
+    }
+  }
+  async function loadMeasuresConfig() {
+    if (measuresConfigPromise) return measuresConfigPromise;
+    measuresConfigPromise = (async () => {
+      try {
+        const resp = await fetch('/api/ui-config');
+        if (!resp.ok) throw new Error(`config ${resp.status}`);
+        const data = await resp.json();
+        const allow = !!(data && data.allow_export_to_measures);
+        const apiUrl = String((data && data.measures_module_api) || '').trim();
+        const cfg = { allowExport: allow, apiUrl };
+        applyMeasuresConfig(cfg);
+        return cfg;
+      } catch {
+        const cfg = { allowExport: false, apiUrl: '' };
+        applyMeasuresConfig(cfg);
+        return cfg;
+      }
+    })();
+    return measuresConfigPromise;
+  }
+  async function requestExportJson() {
+    const cpe = (cpeInput && cpeInput.value || '').trim();
+    if (!cpe) { alert('Сначала укажите URI объекта и постройте граф'); return null; }
+    const mode = (scModeSel && scModeSel.value) || 'strict';
+    let maxPer = 3;
+    try { maxPer = Math.max(1, Math.min(10, parseInt(scMaxPerTacticInput.value || '3'))); } catch {}
+    const qs = new URLSearchParams({ cpe, mode, max_per_tactic: String(maxPer) });
+    const resp = await fetch(`/api/export?${qs.toString()}`);
+    if (!resp.ok) {
+      let err = `${resp.status} ${resp.statusText}`;
+      try { const data = await resp.json(); if (data && data.error) err += ` — ${data.error}`; } catch {}
+      alert(`Ошибка экспорта: ${err}`);
+      return null;
+    }
+    return resp;
+  }
+  function targetOriginFromUrl(apiUrl) {
+    try { return new URL(apiUrl, window.location.href).origin; } catch { return '*'; }
+  }
   function handleExportPng() {
     if (!cy) { alert('Граф ещё не построен'); return; }
     const transparent = !!(exportTransparent && exportTransparent.checked);
@@ -1210,19 +1264,8 @@
   }
   async function handleExportJson() {
     try {
-      const cpe = (cpeInput && cpeInput.value || '').trim();
-      if (!cpe) { alert('Сначала укажите URI объекта и постройте граф'); return; }
-      const mode = (scModeSel && scModeSel.value) || 'strict';
-      let maxPer = 3;
-      try { maxPer = Math.max(1, Math.min(10, parseInt(scMaxPerTacticInput.value || '3'))); } catch {}
-      const qs = new URLSearchParams({ cpe, mode, max_per_tactic: String(maxPer) });
-      const resp = await fetch(`/api/export?${qs.toString()}`);
-      if (!resp.ok) {
-        let err = `${resp.status} ${resp.statusText}`;
-        try { const data = await resp.json(); if (data && data.error) err += ` — ${data.error}`; } catch {}
-        alert(`Ошибка экспорта: ${err}`);
-        return;
-      }
+      const resp = await requestExportJson();
+      if (!resp) return;
       // Пытаемся получить имя файла из заголовка Content-Disposition
       let fname = 'export.json';
       try {
@@ -1244,6 +1287,65 @@
       alert(`Ошибка экспорта: ${e}`);
     }
   }
+  async function handleExportApi() {
+    try {
+      const cfg = await loadMeasuresConfig();
+      if (!cfg.allowExport) {
+        alert('Экспорт в модуль мер отключён в настройках.');
+        return;
+      }
+      if (!cfg.apiUrl) {
+        alert('Не задан адрес модуля мер (MEASURES_MODULE_API).');
+        return;
+      }
+      const resp = await requestExportJson();
+      if (!resp) return;
+      const payloadText = await resp.text();
+      const targetOrigin = targetOriginFromUrl(cfg.apiUrl);
+      if (measuresWindowRef && !measuresWindowRef.closed) {
+        try { measuresWindowRef.close(); } catch {}
+      }
+      const win = window.open(cfg.apiUrl, 'measures-module');
+      if (!win) {
+        alert('Браузер заблокировал открытие окна модуля мер.');
+        return;
+      }
+      measuresWindowRef = win;
+      let settled = false;
+      let pingTimer = null;
+      let timeoutId = null;
+      const cleanup = (timerId, timeoutId) => {
+        window.removeEventListener('message', onReady);
+        if (timerId) clearInterval(timerId);
+        if (timeoutId) clearTimeout(timeoutId);
+      };
+      const onReady = (event) => {
+        if (targetOrigin !== '*' && event.origin !== targetOrigin) return;
+        const data = event.data || {};
+        if (data.type !== 'measures-ready') return;
+        try {
+          win.postMessage({ type: 'scenario-export', payload: payloadText }, targetOrigin);
+          settled = true;
+          if (exportBackdrop) closeExportModal();
+        } finally {
+          cleanup(pingTimer, timeoutId);
+        }
+      };
+      window.addEventListener('message', onReady);
+      const ping = () => {
+        try { win.postMessage({ type: 'measures-ping' }, targetOrigin); } catch {}
+      };
+      pingTimer = setInterval(ping, 500);
+      timeoutId = setTimeout(() => {
+        if (settled) return;
+        cleanup(pingTimer, timeoutId);
+        alert('Модуль мер не ответил. Проверьте, что он запущен.');
+      }, 8000);
+      ping();
+    } catch (e) {
+      alert(`Ошибка экспорта: ${e}`);
+    }
+  }
   function bindExportUI() {
     if (exportBtn && exportBackdrop) exportBtn.addEventListener('click', openExportModal);
     if (exportCloseBtn) exportCloseBtn.addEventListener('click', closeExportModal);
@@ -1251,6 +1353,8 @@
     if (exportPngBtn) exportPngBtn.addEventListener('click', handleExportPng);
     if (exportSvgBtn) exportSvgBtn.addEventListener('click', handleExportSvg);
     if (exportJsonBtn) exportJsonBtn.addEventListener('click', handleExportJson);
+    if (exportApiBtn) exportApiBtn.addEventListener('click', handleExportApi);
+    if (exportApiBtn) loadMeasuresConfig();
     tryRegisterSvgPlugin();
   }
 

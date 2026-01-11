@@ -181,6 +181,25 @@ def targets_page() -> FileResponse:
     return FileResponse(str(page))
 
 
+@app.get("/api/ui-config")
+def ui_config() -> JSONResponse:
+    allow_export = os.getenv("ALLOW_EXPORT_TO_MEASURES_MODULE", "false").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    measures_api = os.getenv("MEASURES_MODULE_API", "").strip()
+    if not allow_export:
+        measures_api = ""
+    return JSONResponse(
+        {
+            "allow_export_to_measures": allow_export,
+            "measures_module_api": measures_api,
+        }
+    )
+
+
 ALLOWED_LOADERS = {"techniques", "capec", "cwe", "cve"}
 
 # Регистрация запущенных процессов: run_id -> Popen
