@@ -17,6 +17,29 @@ services:
     volumes:
       - neo4j_data:/data   # Данные БД
       - neo4j_logs:/logs   # Логи БД
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p ${NEO4J_PASSWORD} -a bolt://localhost:7687 'RETURN 1' || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 2m
+
+  gnn:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.gnn
+    container_name: gnn
+    depends_on:
+      - neo4j
+    env_file:
+      - .env
+    volumes:
+      - gnn_data:/app/gnn_data
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "5"
 
   app:
     build:
@@ -24,10 +47,10 @@ services:
       dockerfile: docker/Dockerfile
     container_name: scenario_app
     depends_on:
-      - neo4j
+      neo4j:
+        condition: service_healthy
     ports:
       - "8000:8000"   # Веб-UI приложения
-    # Переменные окружения для приложения читаются из .env в корне автоматически
     env_file:
       - .env
     logging:
@@ -39,3 +62,4 @@ services:
 volumes:
   neo4j_data:
   neo4j_logs:
+  gnn_data:

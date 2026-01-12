@@ -15,6 +15,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 from typing import Dict, List, Optional, Tuple
 
+import httpx
 from uvicorn.logging import DefaultFormatter, AccessFormatter
 from fastapi import FastAPI, Request, UploadFile, File
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse, Response, RedirectResponse
@@ -253,6 +254,31 @@ def _active_run_of_kind(kind: str, exclude_run_id: Optional[str] = None) -> Opti
             if proc.poll() is None and RUN_KINDS.get(rid) == kind and rid != exclude_run_id:
                 return rid
     return None
+
+
+def _gnn_service_url() -> Optional[str]:
+    raw = (os.getenv("GNN_SERVICE_URL") or "").strip()
+    if not raw:
+        return None
+    return raw.rstrip("/")
+
+
+async def _fetch_gnn_status(timeout_s: float = 3.0) -> Tuple[Optional[Dict[str, object]], Optional[str]]:
+    base_url = _gnn_service_url()
+    if not base_url:
+        return None, "GNN_SERVICE_URL не задан"
+    try:
+        async with httpx.AsyncClient(timeout=timeout_s) as client:
+            resp = await client.get(f"{base_url}/status")
+    except httpx.RequestError as exc:
+        return None, f"Не удалось получить статус GNN: {exc}"
+    try:
+        data = resp.json()
+    except Exception:
+        return None, "Некорректный ответ статуса GNN"
+    if not isinstance(data, dict):
+        return None, "Некорректный формат статуса GNN"
+    return data, None
 
 
 def normalize_object_uri(raw: str) -> Tuple[str, bool]:
@@ -629,6 +655,15 @@ async def run_loader(request: Request):
             {"error": "Управление загрузчиками отключено администатором"},
             status_code=403,
         )
+
+    gnn_status, gnn_err = await _fetch_gnn_status()
+    if gnn_status and gnn_status.get("status") == "running":
+        return JSONResponse(
+            {"error": "Нельзя запускать загрузчики, пока выполняется GNN", "run_id": gnn_status.get("run_id")},
+            status_code=409,
+        )
+    if gnn_err:
+        logger.warning("gnn status unavailable: %s", gnn_err)
         
     try:
         payload = await request.json()
@@ -724,6 +759,15 @@ async def run_refresh_epss_kev(request: Request):
             {"error": "Управление обновлениями EPSS и CISA KEV отключено администатором"},
             status_code=403,
         )
+
+    gnn_status, gnn_err = await _fetch_gnn_status()
+    if gnn_status and gnn_status.get("status") == "running":
+        return JSONResponse(
+            {"error": "Нельзя запускать обновления, пока выполняется GNN", "run_id": gnn_status.get("run_id")},
+            status_code=409,
+        )
+    if gnn_err:
+        logger.warning("gnn status unavailable: %s", gnn_err)
     
     try:
         payload = await request.json()
@@ -785,73 +829,69 @@ async def run_gnn(request: Request):
         payload = await request.json()
     except Exception:
         payload = {}
-    tty_columns = payload.get("columns")
-    tty_rows = payload.get("rows")
     run_id = payload.get("run_id")
-    dry_run = bool(payload.get("dry_run"))
-
-    epochs = payload.get("epochs")
-    top_k = payload.get("top_k")
-    min_score = payload.get("min_score")
-    sentence_model = payload.get("sentence_model")
-    device = payload.get("device")
-    mode = payload.get("mode")
-
     if not isinstance(run_id, str) or not run_id:
         run_id = str(int(time.time() * 1000))
-    with RUNS_LOCK:
-        _cleanup_runs_locked()
-    active_gnn = _active_run_of_kind("gnn", exclude_run_id=run_id)
-    if active_gnn:
+        payload["run_id"] = run_id
+
+    active_loader = _active_run_of_kind("loader", exclude_run_id=run_id)
+    if active_loader:
         return JSONResponse(
-            {"error": "Уже выполняется другой процесс GNN", "run_id": active_gnn},
+            {"error": "Уже выполняется процесс загрузчика", "run_id": active_loader},
             status_code=409,
         )
-    with RUNS_LOCK:
-        if run_id in RUNS and RUNS[run_id].poll() is None:
-            return JSONResponse(
-                {"error": "Уже есть активный процесс с таким run_id", "run_id": run_id},
-                status_code=409,
-            )
 
-    cmd = build_gnn_command(
-        epochs=epochs,
-        top_k=top_k,
-        min_score=min_score,
-        sentence_model=sentence_model,
-        device=device,
-        mode=mode,
-        dry_run=dry_run,
-    )
-    logger.info(
-        "start gnn run_id=%s epochs=%s top_k=%s min_score=%s sentence_model=%s device=%s mode=%s dry_run=%s cmd=%s",
-        run_id,
-        epochs,
-        top_k,
-        min_score,
-        sentence_model,
-        device,
-        mode,
-        dry_run,
-        " ".join(cmd),
-    )
+    gnn_url = _gnn_service_url()
+    if not gnn_url:
+        return JSONResponse(
+            {"error": "GNN сервис не настроен (GNN_SERVICE_URL)"},
+            status_code=503,
+        )
 
-    def generator():
-        yield f"$ {' '.join(cmd)}\n[run_id: {run_id}]\n\n"
-        for chunk in stream_process(
-            cmd,
-            run_id,
-            tty_columns=tty_columns,
-            tty_rows=tty_rows,
-            extra_env=None,
-            kind="gnn",
-        ):
-            yield chunk
+    logger.info("proxy gnn run_id=%s -> %s", run_id, gnn_url)
+    timeout = httpx.Timeout(connect=3.0, read=None, write=10.0, pool=10.0)
+    client = httpx.AsyncClient(timeout=timeout)
+    stream_cm = client.stream("POST", f"{gnn_url}/run", json=payload)
+    try:
+        resp = await stream_cm.__aenter__()
+    except httpx.RequestError as exc:
+        await client.aclose()
+        logger.warning("gnn service request failed: %s", exc)
+        return JSONResponse(
+            {"error": f"Не удалось связаться с GNN сервисом: {exc}"},
+            status_code=503,
+        )
+
+    if resp.status_code >= 400:
+        msg = f"{resp.status_code} {resp.reason_phrase}"
+        try:
+            body = await resp.aread()
+            if body:
+                data = json.loads(body.decode("utf-8"))
+                if isinstance(data, dict) and data.get("error"):
+                    msg = f"{msg} — {data['error']}"
+        except Exception:
+            pass
+        await stream_cm.__aexit__(None, None, None)
+        await client.aclose()
+        return JSONResponse({"error": msg}, status_code=resp.status_code)
+
+    hdr_id = resp.headers.get("x-run-id") or run_id
+
+    async def generator():
+        try:
+            async for chunk in resp.aiter_bytes():
+                if not chunk:
+                    continue
+                yield chunk
+        finally:
+            await stream_cm.__aexit__(None, None, None)
+            await client.aclose()
 
     return StreamingResponse(
         generator(),
         media_type="text/plain; charset=utf-8",
-        headers={"X-Run-Id": run_id},
+        headers={"X-Run-Id": hdr_id},
     )
 
 
@@ -892,8 +932,16 @@ def clear_gnn_predictions():
     return JSONResponse({"status": "ok"})
 
 
+@app.get("/gnn/status")
+async def get_gnn_status():
+    data, err = await _fetch_gnn_status()
+    if err:
+        return JSONResponse({"status": "unavailable", "error": err}, status_code=503)
+    return JSONResponse(data)
+
+
 @app.get("/gnn/roc-auc")
-def get_gnn_roc_auc():
+async def get_gnn_roc_auc():
     allow_gnn = os.getenv("ALLOW_GNN_CONTROL", "false").lower() in {"1", "true", "yes"}
     if not allow_gnn:
         logger.warning("GNN ROC-AUC request denied by config")
@@ -902,41 +950,29 @@ def get_gnn_roc_auc():
             status_code=403,
         )
 
-    path = ROOT / "gnn" / "roc_auc_last.json"
-    if not path.exists():
+    gnn_url = _gnn_service_url()
+    if not gnn_url:
         return JSONResponse(
-            {"status": "missing", "error": "Файл ROC-AUC не найден."},
-            status_code=404,
+            {"status": "error", "error": "GNN сервис не настроен (GNN_SERVICE_URL)"},
+            status_code=503,
         )
-
     try:
-        raw = path.read_text(encoding="utf-8")
-    except Exception as exc:
-        logger.exception("failed to read ROC-AUC JSON: %s", exc)
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(f"{gnn_url}/roc-auc")
+    except httpx.RequestError as exc:
+        logger.warning("gnn roc-auc request failed: %s", exc)
         return JSONResponse(
-            {"status": "error", "error": "Не удалось прочитать файл ROC-AUC."},
-            status_code=500,
+            {"status": "error", "error": f"Не удалось связаться с GNN сервисом: {exc}"},
+            status_code=503,
         )
-
     try:
-        payload = json.loads(raw)
-    except Exception as exc:
-        logger.exception("failed to parse ROC-AUC JSON: %s", exc)
+        payload = resp.json()
+    except Exception:
         return JSONResponse(
-            {"status": "error", "error": "Некорректный формат JSON ROC-AUC."},
-            status_code=500,
+            {"status": "error", "error": "Некорректный ответ GNN сервиса"},
+            status_code=502,
         )
-
-    def sanitize(obj):
-        if isinstance(obj, float):
-            return obj if math.isfinite(obj) else None
-        if isinstance(obj, list):
-            return [sanitize(item) for item in obj]
-        if isinstance(obj, dict):
-            return {key: sanitize(value) for key, value in obj.items()}
-        return obj
-
-    return JSONResponse(sanitize(payload))
+    return JSONResponse(payload, status_code=resp.status_code)
 
 
 @app.post("/stop")
@@ -953,8 +989,27 @@ async def stop_run(request: Request):
         _cleanup_runs_locked()
         proc = RUNS.get(run_id)
     if not proc or proc.poll() is not None:
-        runner_logger.info("stop requested for missing run_id=%s", run_id)
-        return JSONResponse({"status": "not-found-or-exited", "run_id": run_id})
+        gnn_url = _gnn_service_url()
+        if not gnn_url:
+            runner_logger.info("stop requested for missing run_id=%s", run_id)
+            return JSONResponse({"status": "not-found-or-exited", "run_id": run_id})
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.post(f"{gnn_url}/stop", json={"run_id": run_id})
+        except httpx.RequestError as exc:
+            runner_logger.warning("gnn stop request failed run_id=%s err=%s", run_id, exc)
+            return JSONResponse(
+                {"status": "gnn-unavailable", "run_id": run_id},
+                status_code=503,
+            )
+        try:
+            payload = resp.json()
+        except Exception:
+            return JSONResponse(
+                {"status": "gnn-error", "run_id": run_id},
+                status_code=502,
+            )
+        return JSONResponse(payload, status_code=resp.status_code)
 
     # Пытаемся мягко остановить
     try:

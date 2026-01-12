@@ -14,6 +14,8 @@
   let abortController = null;
   let currentRunId = null;
   let currentJobKind = null; // 'load' | 'refresh' | 'gnn' | null
+  let gnnRecovered = false;
+  let gnnPollInFlight = false;
   // Запоминаем ключ последней зафиксированной строки прогресса, чтобы не дублировать финал
   let lastFinalKey = null;
   let inBar = false;
@@ -364,6 +366,7 @@
     const payload = {};
     currentRunId = `${Date.now()}-${Math.random().toString(16).slice(2,8)}`;
     currentJobKind = 'gnn';
+    gnnRecovered = false;
     payload.run_id = currentRunId;
     try {
       const rect = output.getBoundingClientRect();
@@ -519,6 +522,9 @@
   const gnnClearResultBackdrop = document.getElementById('gnn-clear-result-backdrop');
   const gnnClearResultMessage = document.getElementById('gnn-clear-result-message');
   const gnnClearResultOk = document.getElementById('gnn-clear-result-ok');
+  const gnnResumeBackdrop = document.getElementById('gnn-resume-backdrop');
+  const gnnResumeMessage = document.getElementById('gnn-resume-message');
+  const gnnResumeOk = document.getElementById('gnn-resume-ok');
   const gnnRocBackdrop = document.getElementById('gnn-roc-backdrop');
   const gnnRocMessage = document.getElementById('gnn-roc-message');
   const gnnRocStats = document.getElementById('gnn-roc-stats');
@@ -547,6 +553,18 @@
     gnnClearResultBackdrop.hidden = true;
   }
 
+  function openGnnResumeModal(message) {
+    if (!gnnResumeBackdrop) return;
+    if (gnnResumeMessage && message) gnnResumeMessage.textContent = message;
+    gnnResumeBackdrop.hidden = false;
+    gnnResumeBackdrop.classList.add('open');
+  }
+  function closeGnnResumeModal() {
+    if (!gnnResumeBackdrop) return;
+    gnnResumeBackdrop.classList.remove('open');
+    gnnResumeBackdrop.hidden = true;
+  }
+
   if (gnnClearCancelBtn) gnnClearCancelBtn.addEventListener('click', () => closeGnnClearConfirmModal());
   if (gnnClearConfirmBackdrop) {
     gnnClearConfirmBackdrop.addEventListener('click', (e) => {
@@ -558,6 +576,11 @@
       if (e.target === gnnClearResultBackdrop) closeGnnClearResultModal();
     });
   }
+  if (gnnResumeBackdrop) {
+    gnnResumeBackdrop.addEventListener('click', (e) => {
+      if (e.target === gnnResumeBackdrop) closeGnnResumeModal();
+    });
+  }
   if (gnnClearConfirmBtn) {
     gnnClearConfirmBtn.addEventListener('click', async () => {
       closeGnnClearConfirmModal();
@@ -566,6 +589,73 @@
   }
   if (gnnClearResultOk) {
     gnnClearResultOk.addEventListener('click', () => closeGnnClearResultModal());
+  }
+  if (gnnResumeOk) {
+    gnnResumeOk.addEventListener('click', () => closeGnnResumeModal());
+  }
+
+  async function restoreGnnState() {
+    if (currentRunId || currentJobKind) return;
+    try {
+      const resp = await fetch('/gnn/status', { method: 'GET' });
+      if (!resp.ok) return;
+      const data = await resp.json();
+      if (!data || data.status !== 'running' || !data.run_id) return;
+
+      currentRunId = data.run_id;
+      currentJobKind = 'gnn';
+      gnnRecovered = true;
+      if (gnnRunBtn) gnnRunBtn.disabled = true;
+      if (gnnStopBtn) gnnStopBtn.disabled = false;
+      if (gnnClearBtn) gnnClearBtn.disabled = true;
+      runBtn.disabled = true;
+      if (refreshBtn) refreshBtn.disabled = true;
+      stopBtn.disabled = true;
+
+      let note = 'Обнаружен запущенный процесс GNN. Поток логов был потерян (страница или сервис были перезагружены).';
+      if (data.started_at) {
+        try {
+          const when = new Date(data.started_at).toLocaleString();
+          note += ` Время старта: ${when}.`;
+        } catch {}
+      }
+      note += ' Управление восстановлено — вы можете остановить процесс.';
+      openGnnResumeModal(note);
+      append(`\n[info] GNN уже запущен (run_id=${data.run_id})\n`);
+    } catch {}
+  }
+
+  async function pollRecoveredGnn() {
+    if (!gnnRecovered || currentJobKind !== 'gnn' || !currentRunId) return;
+    if (gnnPollInFlight) return;
+    gnnPollInFlight = true;
+    try {
+      const resp = await fetch('/gnn/status', { method: 'GET' });
+      if (!resp.ok) return;
+      const data = await resp.json();
+      if (!data || data.status !== 'running') {
+        append(`\n[info] GNN завершен (run_id=${currentRunId})\n`);
+        currentRunId = null;
+        currentJobKind = null;
+        gnnRecovered = false;
+        if (gnnRunBtn) gnnRunBtn.disabled = false;
+        if (gnnStopBtn) gnnStopBtn.disabled = true;
+        if (gnnClearBtn) gnnClearBtn.disabled = false;
+        runBtn.disabled = false;
+        if (refreshBtn) refreshBtn.disabled = false;
+        stopBtn.disabled = true;
+        return;
+      }
+      if (data.run_id && data.run_id !== currentRunId) {
+        currentRunId = data.run_id;
+        let note = 'Обнаружен другой запущенный процесс GNN. Поток логов недоступен.';
+        note += ` Текущий run_id: ${data.run_id}.`;
+        openGnnResumeModal(note);
+        append(`\n[info] GNN процесс изменился (run_id=${data.run_id})\n`);
+      }
+    } catch {} finally {
+      gnnPollInFlight = false;
+    }
   }
 
   function openGnnRocModal() {
@@ -758,6 +848,9 @@
       if (e.target === gnnRocBackdrop) closeGnnRocModal();
     });
   }
+
+  restoreGnnState();
+  setInterval(pollRecoveredGnn, 5000);
 
   function openLeaveModal(href=null) {
     leavePendingHref = href;

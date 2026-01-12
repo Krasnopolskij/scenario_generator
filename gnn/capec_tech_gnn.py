@@ -39,7 +39,7 @@ class GNNConfig:
     # Параметры GNN
     hidden_dim: int = 128
     out_dim: int = 64
-    epochs: int = 60
+    epochs: int = 70
     lr: float = 1e-3
     weight_decay: float = 5e-4
 
@@ -47,7 +47,7 @@ class GNNConfig:
     top_k: int = 2
     min_score: float = 0.7
 
-    # Режим работы GNN: mlp (через MLP-предиктор) или dot (через cosine-сходство)
+    # Режим работы GNN: mlp (через MLP-предиктор) или dot (через косинусное сходство)
     mode: str = "dot"
 
     # Прочее
@@ -378,7 +378,8 @@ def set_random_seed(seed: int) -> None:
 
 
 def _roc_json_path() -> Path:
-    return Path(__file__).resolve().parent / "roc_auc_last.json"
+    root = Path(__file__).resolve().parents[1]
+    return root / "gnn_data" / "roc_auc_last.json"
 
 
 def save_roc_auc_json(
@@ -428,6 +429,7 @@ def save_roc_auc_json(
 
     path = _roc_json_path()
     try:
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             json.dumps(payload, ensure_ascii=True, indent=2, allow_nan=False),
             encoding="utf-8",

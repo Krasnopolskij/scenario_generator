@@ -11,10 +11,6 @@ WORKDIR /app
 COPY requirements-app.txt ./requirements-app.txt
 RUN pip install --no-cache-dir -r ./requirements-app.txt
 
-# Установка зависимостей GNN-модуля
-COPY requirements-gnn.txt ./requirements-gnn.txt
-RUN pip install --no-cache-dir -r ./requirements-gnn.txt
-
 # Копирование файлов проекта
 COPY . ./
 

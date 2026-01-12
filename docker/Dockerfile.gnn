@@ -1,0 +1,23 @@
+# Минимальный образ для GNN сервиса
+FROM python:3.11-slim AS gnn
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    HF_HOME=/app/gnn_data/hf_cache \
+    SENTENCE_TRANSFORMERS_HOME=/app/gnn_data/sentence_transformers
+
+WORKDIR /app
+
+# Установка CPU-сборки torch
+RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu torch==2.8.0+cpu
+
+# Установка зависимостей
+COPY requirements-gnn.txt ./requirements-gnn.txt
+RUN pip install --no-cache-dir -r ./requirements-gnn.txt
+
+COPY gnn ./gnn
+
+EXPOSE 8001
+
+# Запуск GNN API
+CMD ["uvicorn", "gnn.service:app", "--host", "0.0.0.0", "--port", "8001"]

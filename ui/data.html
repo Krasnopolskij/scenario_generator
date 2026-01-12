@@ -169,6 +169,20 @@
     </div>
   </div>
 
+  <!-- Восстановление управления запущенным GNN -->
+  <div id="gnn-resume-backdrop" class="modal-backdrop" hidden>
+    <div class="modal">
+      <div class="modal-title">Процесс GNN уже запущен</div>
+      <div class="modal-body" id="gnn-resume-message">
+        Обнаружен запущенный процесс GNN. Поток логов был потерян (страница или сервис были перезагружены).
+        Управление восстановлено — вы можете остановить процесс.
+      </div>
+      <div class="modal-actions">
+        <button id="gnn-resume-ok" class="btn-primary">Понятно</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ROC-AUC график GNN -->
   <div id="gnn-roc-backdrop" class="modal-backdrop" hidden>
     <div class="modal modal-roc">

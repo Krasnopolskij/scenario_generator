@@ -4,6 +4,7 @@
 
 ### Состав
 - `app` — python-приложение на FastAPI с клиентской частью на JS
+- `gnn` — сервис для запуска GNN и стриминга логов
 - `neo4j` — база данных Neo4j
 
 ### Быстрый старт
@@ -23,10 +24,11 @@
 
 ### Заметки
 - Контейнер приложения подключается к Neo4j по адресу `bolt://neo4j:7687` (имя сервиса).
+- Контейнер приложения обращается к GNN сервису по адресу `http://gnn:8001` (имя сервиса).
 - Загрузчики можно запустить и вручную внутри контейнера, пример:
   
   `docker exec -it scenario_app python -u data_collection/loader.py --only techniques,capec,cwe,cve --cve-from-year 2020`
-- Для сборки используются `requirements-app.txt` и `requirements-gnn.txt` (зависимости основного приложения и GNN-модуля).
+- Для сборки используются `requirements-app.txt`, `requirements-gnn.txt` и `requirements-gnn-service.txt`.
 
 ## Команды Compose
 
