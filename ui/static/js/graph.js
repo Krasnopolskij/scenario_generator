@@ -1187,9 +1187,12 @@
   function applyMeasuresConfig(cfg) {
     measuresConfig = cfg;
     if (!exportApiBtn) return;
-    if (!cfg.allowExport || !cfg.apiUrl) {
+    if (!cfg.allowExport) {
       exportApiBtn.disabled = true;
-      exportApiBtn.title = 'Экспорт в модуль мер отключён';
+      exportApiBtn.title = 'Интеграция с модулем мер отключена администратором';
+    } else if (!cfg.apiUrl) {
+      exportApiBtn.disabled = true;
+      exportApiBtn.title = 'Не задан адрес модуля мер';
     } else {
       exportApiBtn.disabled = false;
       exportApiBtn.title = 'Отправить в модуль генерации мер';
