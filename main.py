@@ -394,9 +394,11 @@ def api_graph_subgraph(cpe: str, mode: str = "full", limit: int = 1000):
 
     def add_edge(r):
         try:
-            rid = str(int(r.identity))
+            rid_raw = str(int(r.identity))
         except Exception:
-            rid = str(r.identity)
+            rid_raw = str(r.identity)
+        # Префикс, чтобы исключить конфликт id ребра с id узла в Cytoscape.
+        rid = f"e:{rid_raw}"
         if rid in edges:
             return
         try:
